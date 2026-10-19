@@ -185,20 +185,35 @@ v20 changes:
 Upload your icon in the CMS (App → Icon) before building.
 
 
-## v21 — Google Play photo/video permission fix
+## v21 — Google Play photo/video permission fix (superseded by v23)
 
 `fastlane supply` fails with *"All developers requesting access to the photo and
 video permissions are required to tell Google Play about the core functionality
 of their app"* when the AAB declares `READ_MEDIA_IMAGES` / `READ_EXTERNAL_STORAGE`.
 
-v21 only adds those permissions when **Photos** or **Storage** is switched on in
-the CMS (App -> Permissions). When they are off, the same permissions are listed
-under `android.blockedPermissions`, so third-party libraries cannot re-inject
-them into the merged manifest.
+v21 only added those permissions when **Photos** or **Storage** was switched on in
+the CMS, and listed them under `android.blockedPermissions` when off. That was
+not enough: the CMS ships `storage.on: true` for client apps that never read
+storage, so the permissions were still merged into the AAB.
 
-If your app genuinely needs photo access, keep the permission on and complete
-Play Console -> Policy -> App content -> **Photo and Video Permissions**
-declaration once; then resubmit.
+## v23 — always strip photo/video/storage and Advertising ID on Android
+
+EatApp client apps do not use a native photo picker, media library, or ads.
+Every Android build now sets `android.blockedPermissions` (Expo writes
+`tools:node="remove"`) for:
+
+- `READ_MEDIA_IMAGES` / `READ_MEDIA_VIDEO` / `READ_MEDIA_VISUAL_USER_SELECTED`
+- `READ_EXTERNAL_STORAGE` / `WRITE_EXTERNAL_STORAGE`
+- `com.google.android.gms.permission.AD_ID`
+
+CMS Photos/Storage toggles are ignored on Android so a per-app flag cannot
+reintroduce the Play declaration. iOS usage-description strings are unchanged.
+OneSignal push permissions (`POST_NOTIFICATIONS`, `INTERNET`, `VIBRATE`,
+`RECEIVE_BOOT_COMPLETED`, FCM/C2DM, `WAKE_LOCK`, etc.) are not blocked.
+
+If an app ever needs photo access, complete Play Console -> Policy -> App
+content -> **Photo and Video Permissions** *and* stop blocking the matching
+permission in `app.config.js` — do not rely on the CMS toggle alone.
 
 ## v22 — no header jump + screen animation
 
