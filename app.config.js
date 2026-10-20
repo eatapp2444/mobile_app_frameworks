@@ -126,6 +126,12 @@ const splashColor = splash.backgroundColor || theme.primary || '#111827';
 const plugins = ['expo-router'];
 
 // Google Play requires apps to target Android 16 (API 36) or higher.
+// iOS 15.1 is React Native 0.81 / Expo SDK 54's minimum. Setting it here
+// updates the app target and Podfile `platform :ios`, but CocoaPods resource
+// bundle targets (e.g. RNCAsyncStorage-RNCAsyncStorage_resources at 13.4)
+// still need the post_install floor in plugins/withIosPodDeploymentTarget.js
+// because Xcode 27 rejects anything below 15.0.
+const IOS_DEPLOYMENT_TARGET = '15.1';
 plugins.push([
   'expo-build-properties',
   {
@@ -134,6 +140,9 @@ plugins.push([
       targetSdkVersion: 36,
       buildToolsVersion: '36.0.0',
       minSdkVersion: 24,
+    },
+    ios: {
+      deploymentTarget: IOS_DEPLOYMENT_TARGET,
     },
   },
 ]);
@@ -165,6 +174,8 @@ if (on('tracking')) {
     },
   ]);
 }
+
+plugins.push(['./plugins/withIosPodDeploymentTarget', { deploymentTarget: IOS_DEPLOYMENT_TARGET }]);
 
 module.exports = ({ config }) => {
   const base = config || {};
