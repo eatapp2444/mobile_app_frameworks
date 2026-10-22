@@ -1,9 +1,10 @@
+import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import Constants from 'expo-constants';
 import { Stack, useGlobalSearchParams, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppBar } from '../src/AppBar';
 import { ConfigProvider, useConfig, useTheme } from '../src/ConfigProvider';
@@ -12,6 +13,13 @@ import { TabBar } from '../src/TabBar';
 import { UpdateGate } from '../src/UpdateGate';
 import { SplashOverlay } from '../src/SplashOverlay';
 import { firstParam } from '../src/navCore';
+import {
+  SCREEN_FADE_ANIMATION,
+  SCREEN_FADE_DURATION_MS,
+  keepAliveScreenTransition,
+  overlayScreenTransition,
+  stackGestureEnabled,
+} from '../src/screenTransitions';
 import { isOverlayPath, panesFromConfig } from '../src/tabPanes';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -46,6 +54,22 @@ function Shell() {
 
   const paneKeys = useMemo(() => panesFromConfig(config).map((p) => p.key), [config]);
   const overlay = isOverlayPath(pathname, webUrl, paneKeys);
+  const overlayTransition = overlayScreenTransition(overlay);
+  const keepAliveTransition = keepAliveScreenTransition();
+  const navTheme = useMemo(
+    () => ({
+      ...DefaultTheme,
+      colors: {
+        ...DefaultTheme.colors,
+        background: theme.background,
+        card: theme.card,
+        primary: theme.primary,
+        text: theme.text,
+        border: theme.border,
+      },
+    }),
+    [theme],
+  );
 
   const isHome = pathname === '/' || pathname === '/index';
   const subTitle = pathname.startsWith('/notifications')
@@ -55,10 +79,11 @@ function Shell() {
       : (config?.pages ?? []).find((p) => pathname.endsWith(String(p.slug ?? '')))?.title ?? '';
 
   return (
+    <ThemeProvider value={navTheme}>
     <View style={{ flex: 1, backgroundColor: theme.background }}>
       <StatusBar style={theme.appBarText === '#FFFFFF' ? 'light' : 'dark'} />
       <AppBar title={isHome ? undefined : subTitle} showBack={!isHome} />
-      <View style={styles.body}>
+      <View style={[styles.body, { backgroundColor: theme.background }]}>
         <View
           style={[styles.stackLayer, overlay ? styles.front : styles.back]}
           pointerEvents={overlay ? 'auto' : 'box-none'}
@@ -66,40 +91,60 @@ function Shell() {
           <Stack
             screenOptions={{
               headerShown: false,
-              animation: 'slide_from_right',
-              animationDuration: 220,
+              animation: SCREEN_FADE_ANIMATION,
+              animationDuration: SCREEN_FADE_DURATION_MS,
+              gestureEnabled: stackGestureEnabled(Platform.OS),
+              animationMatchesGesture: false,
+              fullScreenGestureEnabled: false,
               contentStyle: { backgroundColor: theme.background },
             }}
           >
             <Stack.Screen
               name="index"
-              options={{ animation: 'none', animationDuration: 0, contentStyle: { backgroundColor: 'transparent' } }}
+              options={{
+                ...keepAliveTransition,
+                contentStyle: { backgroundColor: 'transparent' },
+              }}
             />
             <Stack.Screen
               name="p/[slug]"
-              options={{ animation: 'none', animationDuration: 0, contentStyle: { backgroundColor: 'transparent' } }}
+              options={{
+                ...overlayTransition,
+                contentStyle: {
+                  backgroundColor: overlay ? theme.background : 'transparent',
+                },
+              }}
             />
             <Stack.Screen
               name="web"
               options={{
-                animation: overlay ? 'slide_from_right' : 'none',
-                animationDuration: overlay ? 220 : 0,
-                contentStyle: { backgroundColor: overlay ? theme.background : 'transparent' },
+                ...overlayTransition,
+                contentStyle: {
+                  backgroundColor: overlay ? theme.background : 'transparent',
+                },
               }}
             />
-            <Stack.Screen name="notifications" />
+            <Stack.Screen
+              name="notifications"
+              options={{
+                animation: SCREEN_FADE_ANIMATION,
+                animationDuration: SCREEN_FADE_DURATION_MS,
+                contentStyle: { backgroundColor: theme.background },
+              }}
+            />
           </Stack>
         </View>
         <View
           collapsable={false}
           pointerEvents={overlay ? 'none' : 'auto'}
-          style={[styles.keepAlive, overlay ? styles.back : styles.front]}
+          style={[styles.keepAlive, { backgroundColor: theme.background }, overlay ? styles.back : styles.front]}
         >
           <TabKeepAlive pathname={pathname} webUrl={webUrl} interactive={!overlay} />
         </View>
       </View>
       <TabBar />
     </View>
+    </ThemeProvider>
   );
 }
 

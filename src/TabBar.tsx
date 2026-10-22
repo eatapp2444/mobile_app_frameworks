@@ -7,6 +7,7 @@ import { NavItem } from './config';
 import { useConfig, useTheme } from './ConfigProvider';
 import { ion } from './icons';
 import { firstParam, isCmsHost, isExternalUrl, openNavTarget } from './nav';
+import { SCREEN_FADE_DURATION_MS, SHEET_MODAL_ANIMATION } from './screenTransitions';
 
 export function TabBar() {
   const { config } = useConfig();
@@ -98,7 +99,7 @@ export function TabBar() {
           )}
       </View>
 
-      <Modal visible={!!sheet} transparent animationType="slide" onRequestClose={() => setSheet(null)}>
+      <Modal visible={!!sheet} transparent animationType={SHEET_MODAL_ANIMATION} onRequestClose={() => setSheet(null)}>
         <Pressable style={styles.backdrop} onPress={() => setSheet(null)} />
         <View
           style={[styles.sheet, { backgroundColor: theme.card, paddingBottom: Math.max(insets.bottom, 16) }]}
@@ -112,7 +113,7 @@ export function TabBar() {
                 style={[styles.row, { borderBottomColor: theme.border }]}
                 onPress={() => {
                   setSheet(null);
-                  setTimeout(() => go(child), 120);
+                  setTimeout(() => go(child), SCREEN_FADE_DURATION_MS);
                 }}
               >
                 <Ionicons name={ion(child.icon)} size={20} color={theme.primary} />

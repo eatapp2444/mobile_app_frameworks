@@ -20,6 +20,7 @@ import {
   resolveHtmlBaseUrl,
   shouldConsumeAndroidBack,
 } from './htmlViewPolicy';
+import { SCREEN_FADE_DURATION_MS } from './screenTransitions';
 
 const SYSTEM_STACK =
   '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", system-ui, sans-serif';
@@ -75,7 +76,9 @@ function useAndroidWebViewBack(ref: React.RefObject<WebView | null>, enabled: bo
  * dashboard preview: same font stack, same theme tokens.
  *
  * The page background stays visible until `onLoadEnd`, then the WebView fades
- * in. `baseUrl` is the client's https origin so WKWebView/Android can cache images.
+ * in. This cover is keep-alive only (stack animation is `none` on tab routes)
+ * so it does not double-fade with overlay screen transitions. `baseUrl` is the
+ * client's https origin so WKWebView/Android can cache images.
  */
 export const HtmlView = React.memo(function HtmlView({
   html,
@@ -117,7 +120,7 @@ export const HtmlView = React.memo(function HtmlView({
     documentLoaded.current = true;
     Animated.timing(cover, {
       toValue: 0,
-      duration: 220,
+      duration: SCREEN_FADE_DURATION_MS,
       easing: Easing.out(Easing.quad),
       useNativeDriver: true,
     }).start();
@@ -130,6 +133,7 @@ export const HtmlView = React.memo(function HtmlView({
         originWhitelist={['*']}
         source={source}
         style={[styles.web, { backgroundColor: theme.background }]}
+        containerStyle={{ flex: 1, backgroundColor: theme.background }}
         javaScriptEnabled
         domStorageEnabled
         cacheEnabled
@@ -198,6 +202,7 @@ export function UrlView({ url, active = true }: { url: string; active?: boolean 
         source={{ uri }}
         originWhitelist={['*']}
         style={[styles.web, { backgroundColor: theme.background }]}
+        containerStyle={{ flex: 1, backgroundColor: theme.background }}
         javaScriptEnabled
         domStorageEnabled
         cacheEnabled
@@ -210,7 +215,8 @@ export function UrlView({ url, active = true }: { url: string; active?: boolean 
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
         setSupportMultipleWindows={false}
-        startInLoadingState
+        // Skip the native loading chrome — it paints white. The themed spinner
+        // below is not animated so overlay /web does not double-fade.
         userAgent={
           // Some sites block the default RN WebView UA — present as mobile Safari/Chrome.
           undefined
@@ -231,7 +237,7 @@ export function UrlView({ url, active = true }: { url: string; active?: boolean 
         }}
       />
       {loading && (
-        <View style={styles.overlay} pointerEvents="none">
+        <View style={[styles.overlay, { backgroundColor: theme.background }]} pointerEvents="none">
           <ActivityIndicator color={theme.primary} />
         </View>
       )}

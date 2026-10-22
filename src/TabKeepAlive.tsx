@@ -31,6 +31,7 @@ export function TabKeepAlive({
   interactive?: boolean;
 }) {
   const { config } = useConfig();
+  const theme = useTheme();
   const panes = useMemo(() => panesFromConfig(config), [config]);
   const known = useMemo(() => new Set<string>(panes.map((p) => p.key)), [panes]);
   const resolved = activePaneKey(pathname, webUrl);
@@ -104,7 +105,7 @@ export function TabKeepAlive({
   const showUnavailable = !!resolved && resolved.startsWith('page:') && !known.has(resolved);
 
   return (
-    <View style={styles.host} collapsable={false}>
+    <View style={[styles.host, { backgroundColor: theme.background }]} collapsable={false}>
       {panes
         .filter((pane) => mountedKeys.has(pane.key))
         .map((pane) => (
@@ -112,7 +113,13 @@ export function TabKeepAlive({
             key={pane.key}
             collapsable={false}
             pointerEvents={interactive && !showUnavailable && pane.key === active ? 'auto' : 'none'}
-            style={[styles.pane, { zIndex: !showUnavailable && pane.key === active ? 1 : 0 }]}
+            style={[
+              styles.pane,
+              {
+                backgroundColor: theme.background,
+                zIndex: !showUnavailable && pane.key === active ? 1 : 0,
+              },
+            ]}
           >
             <PaneBody pane={pane} active={interactive && pane.key === active} />
           </View>

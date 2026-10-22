@@ -7,6 +7,7 @@ import { ion } from './icons';
 import { useConfig, useTheme } from './ConfigProvider';
 import { openNavTarget } from './nav';
 import { useNotificationCenter } from './notifications';
+import { SCREEN_FADE_DURATION_MS } from './screenTransitions';
 
 /**
  * App bar rendered 100% from the CMS payload:
@@ -39,13 +40,13 @@ export function AppBar({ title, showBack = false }: { title?: string; showBack?:
   const logo = config?.app?.logo ?? config?.app?.icon ?? null;
   const label = title ?? config?.app?.name ?? '';
 
-  // Subtle fade/slide whenever the title changes between screens.
+  // Title cross-fades only (opacity), with no horizontal motion.
   const anim = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     anim.setValue(0);
     Animated.timing(anim, {
       toValue: 1,
-      duration: 220,
+      duration: SCREEN_FADE_DURATION_MS,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
@@ -74,12 +75,7 @@ export function AppBar({ title, showBack = false }: { title?: string; showBack?:
               style={[
                 styles.title,
                 { color: fg, fontFamily: theme.fontFamilyRN },
-                {
-                  opacity: anim,
-                  transform: [
-                    { translateX: anim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) },
-                  ],
-                },
+                { opacity: anim },
               ]}
             >
               {label}
