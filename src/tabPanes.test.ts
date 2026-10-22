@@ -3,11 +3,15 @@ import { test } from 'node:test';
 import type { AppConfig, NavItem } from './config';
 import { firstParam, resolveNavAction, resolvePathname } from './navCore';
 import {
+  MAX_MOUNTED_PANES,
+  PAGE_UNAVAILABLE_MESSAGE,
   activePaneKey,
   collectNavDestinations,
   isOverlayPath,
+  keysAfterMemoryPressure,
   paneFromNavItem,
   panesFromConfig,
+  selectMountedPaneKeys,
   shouldMountPane,
 } from './tabPanes';
 
@@ -32,10 +36,13 @@ const config = {
   app: { name: "Domenico's Pizza Pasta Ribs", bundleId: 'com.domenicospizzapastaribs.clientapp' },
   theme: {},
   navigation: { maxVisible: 4, moreLabel: 'More', items: domenicoNav },
-  pages: [{ slug: 'about-us', title: 'About Us', type: 'html', html: '<p>About</p>' }],
+  pages: [
+    { slug: 'about-us', title: 'About Us', type: 'html', html: '<p>About</p>' },
+    { slug: 'catering', title: 'Catering', type: 'html', html: '<p>Catering</p>' },
+  ],
 } as AppConfig;
 
-test('Domenico tabs become four keep-alive panes (home, order web, about, account web)', () => {
+test('Domenico tabs list nav destinations plus extra config pages (lazy)', () => {
   const panes = panesFromConfig(config);
   assert.deepEqual(
     panes.map((p) => p.key),
@@ -44,8 +51,10 @@ test('Domenico tabs become four keep-alive panes (home, order web, about, accoun
       'web:https://domenicospizza.orderexperience.net/652fa4b52a1c90cb5a0ba872/menu',
       'page:about-us',
       'web:https://orders.eatapp.online/admin/user/login',
+      'page:catering',
     ],
   );
+  assert.equal(panes.find((p) => p.key === 'page:catering')?.eager, false);
 });
 
 test('Order submenu children are panes; the group itself is not', () => {
@@ -97,19 +106,61 @@ test('More overflow items still get panes because they live on navigation.items'
   assert.ok(panes.some((p) => p.key === 'page:contact'));
 });
 
-test('CMS pages pre-mount; Order/Account web panes wait until first visit', () => {
-  const home = { key: 'home' as const, kind: 'home' as const };
-  const about = { key: 'page:about-us' as const, kind: 'page' as const, slug: 'about-us' };
-  const order = {
-    key: 'web:https://order.example/menu' as const,
-    kind: 'web' as const,
-    url: 'https://order.example/menu',
-  };
+test('nav CMS pages pre-mount; extra config pages and Order/Account wait until first visit', () => {
+  const panes = panesFromConfig(config);
+  const home = panes.find((p) => p.key === 'home')!;
+  const about = panes.find((p) => p.key === 'page:about-us')!;
+  const catering = panes.find((p) => p.key === 'page:catering')!;
+  const order = panes.find((p) => p.kind === 'web' && p.url.includes('orderexperience'))!;
+  assert.equal(about.eager, true);
+  assert.equal(catering.eager, false);
   assert.equal(shouldMountPane(home, 'home', []), true);
   assert.equal(shouldMountPane(about, 'home', []), true);
+  assert.equal(shouldMountPane(catering, 'home', []), false);
+  assert.equal(shouldMountPane(catering, catering.key, []), true);
   assert.equal(shouldMountPane(order, 'home', []), false);
   assert.equal(shouldMountPane(order, order.key, []), true);
   assert.equal(shouldMountPane(order, 'home', [order.key]), true);
+});
+
+test('mounted pane cap keeps the active WebView and drops the oldest extras', () => {
+  const extraPages = Array.from({ length: 8 }, (_, i) => ({
+    slug: `p${i}`,
+    title: `P${i}`,
+    type: 'html',
+  }));
+  const crowded = {
+    app: { name: 'x', bundleId: 'x' },
+    theme: {},
+    navigation: {
+      items: extraPages.map((p) => ({ id: p.slug, label: p.title, route: `/${p.slug}` })),
+    },
+    pages: extraPages,
+  } as AppConfig;
+  const panes = panesFromConfig(crowded);
+  const active = 'page:p7';
+  const keys = selectMountedPaneKeys(panes, active, extraPages.map((p) => `page:${p.slug}`), 6);
+  assert.ok(keys.includes(active));
+  assert.ok(keys.length <= 6);
+  assert.equal(MAX_MOUNTED_PANES, 6);
+});
+
+test('memory pressure unmounts Order/Account and lazy pages, keeps eager CMS tabs', () => {
+  const panes = panesFromConfig(config);
+  const order = panes.find((p) => p.kind === 'web' && p.url.includes('orderexperience'))!;
+  const after = keysAfterMemoryPressure(panes, 'home');
+  assert.ok(after.includes('home'));
+  assert.ok(after.includes('page:about-us'));
+  assert.ok(!after.includes(order.key));
+  assert.ok(!after.includes('page:catering'));
+  assert.ok(keysAfterMemoryPressure(panes, order.key).includes(order.key));
+});
+
+test('unknown /p/<slug> overlays with the unavailable message, not a blank keep-alive', () => {
+  const keys = panesFromConfig(config).map((p) => p.key);
+  assert.equal(isOverlayPath('/p/about-us', undefined, keys), false);
+  assert.equal(isOverlayPath('/p/does-not-exist', undefined, keys), true);
+  assert.equal(PAGE_UNAVAILABLE_MESSAGE, 'This page is not available yet.');
 });
 
 test('bell / notifications is an overlay, not a keep-alive pane', () => {

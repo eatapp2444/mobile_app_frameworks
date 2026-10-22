@@ -5,10 +5,7 @@ ios/
 android/
 .env
 .env.local
-# The lockfile is intentionally NOT committed.
-# EAS then runs `npm install` instead of `npm ci`, so a stale lockfile can
-# never break a build again (this was the npm ci EUSAGE / ERESOLVE failure).
-package-lock.json
+# yarn.lock is unused. package-lock.json is committed so new deps stay reproducible.
 yarn.lock
 assets/generated/
 assets/config/app.json

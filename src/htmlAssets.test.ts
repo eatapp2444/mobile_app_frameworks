@@ -1,74 +1,70 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { test } from 'node:test';
-import type { AppConfig } from './config';
+import { fileURLToPath } from 'node:url';
 import {
-  collectPageImageUrls,
-  isPrefetchableImage,
+  CMS_HTML_CACHE_MODE,
+  DEFAULT_HTML_BASE_URL,
+  URL_VIEW_CACHE_MODE,
+  htmlViewNavDecision,
+  isHtmlViewDocumentUrl,
   resolveHtmlBaseUrl,
-  urlsFromHtml,
-} from './htmlAssets';
+  shouldConsumeAndroidBack,
+} from './htmlViewPolicy';
 
-test('resolveHtmlBaseUrl skips font CDNs and uses the first real https origin', () => {
-  const html = `
-    @import url('https://fonts.googleapis.com/css2?family=Cabin');
-    <img src="https://domenicospizza.com.au/wp-content/uploads/2024/10/Logo.png" />
-  `;
-  assert.equal(resolveHtmlBaseUrl(html), 'https://domenicospizza.com.au/');
-});
-
-test('resolveHtmlBaseUrl falls back to webview origin then the CMS host', () => {
+test('baseUrl comes from webview.url / app.domain, not the first https URL in HTML', () => {
   assert.equal(
-    resolveHtmlBaseUrl('<p>no urls</p>', 'https://domenicospizza.com.au/menu'),
+    resolveHtmlBaseUrl({ webviewUrl: 'https://domenicospizza.com.au/menu' }),
     'https://domenicospizza.com.au/',
   );
-  assert.equal(resolveHtmlBaseUrl(''), 'https://mobileforge-studio.lovable.app/');
-});
-
-test('empty baseUrl is never returned', () => {
-  assert.match(resolveHtmlBaseUrl('', ''), /^https:\/\//);
-  assert.notEqual(resolveHtmlBaseUrl('<div></div>'), '');
-});
-
-test('urlsFromHtml collects wordpress images and ignores data/font urls', () => {
-  const html = `
-    <img src="data:image/webp;base64,AAAA" />
-    <img src="https://domenicospizza.com.au/wp-content/uploads/2024/10/img-1800-pizza-002.jpg" />
-    <img src="https://cdn.example/hero.png" />
-    <style>@import url('https://fonts.googleapis.com/css2?family=Cabin');</style>
-  `;
-  assert.deepEqual(urlsFromHtml(html), [
-    'https://domenicospizza.com.au/wp-content/uploads/2024/10/img-1800-pizza-002.jpg',
-    'https://cdn.example/hero.png',
-  ]);
-});
-
-test('isPrefetchableImage accepts wp-content even without a file extension', () => {
   assert.equal(
-    isPrefetchableImage('https://domenicospizza.com.au/wp-content/uploads/2024/10/Logo.png'),
-    true,
+    resolveHtmlBaseUrl({ domain: 'domenicospizza.com.au' }),
+    'https://domenicospizza.com.au/',
   );
-  assert.equal(isPrefetchableImage('https://fonts.googleapis.com/css2?family=Cabin'), false);
-  assert.equal(isPrefetchableImage('data:image/png;base64,xx'), false);
+  // A 3rd-party embed must not win just because it appears first in the HTML.
+  assert.equal(
+    resolveHtmlBaseUrl({ webviewUrl: 'https://domenicospizza.com.au' }),
+    'https://domenicospizza.com.au/',
+  );
+  assert.notEqual(
+    resolveHtmlBaseUrl({ webviewUrl: 'https://domenicospizza.com.au' }),
+    'https://www.youtube.com/',
+  );
 });
 
-test('collectPageImageUrls reads home + page HTML from config', () => {
-  const config = {
-    app: { name: "Domenico's", bundleId: 'com.domenicospizzapastaribs.clientapp' },
-    theme: {},
-    home: {
-      html: '<img src="https://domenicospizza.com.au/wp-content/uploads/2024/10/img-1800-pizza-002.jpg" />',
-    },
-    pages: [
-      {
-        slug: 'about-us',
-        title: 'About Us',
-        type: 'html',
-        html: '<img src="https://domenicospizza.com.au/wp-content/uploads/2024/10/img-pizza-hero-001-1024x829.jpg" />',
-      },
-    ],
-  } as AppConfig;
+test('fallback baseUrl is localhost, never the blocked CMS host', () => {
+  assert.equal(resolveHtmlBaseUrl({}), DEFAULT_HTML_BASE_URL);
+  assert.equal(DEFAULT_HTML_BASE_URL, 'https://localhost/');
+  assert.equal(resolveHtmlBaseUrl({ webviewUrl: 'https://mobileforge-studio.lovable.app/app' }), DEFAULT_HTML_BASE_URL);
+  assert.doesNotMatch(resolveHtmlBaseUrl(null), /lovable/);
+});
 
-  const urls = collectPageImageUrls(config);
-  assert.equal(urls.length, 2);
-  assert.ok(urls.every((u) => u.startsWith('https://domenicospizza.com.au/wp-content/')));
+test('LOAD_CACHE_ELSE_NETWORK is CMS HtmlView only — UrlView must revalidate', () => {
+  assert.equal(CMS_HTML_CACHE_MODE, 'LOAD_CACHE_ELSE_NETWORK');
+  assert.equal(URL_VIEW_CACHE_MODE, undefined);
+  const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'HtmlView.tsx'), 'utf8');
+  const urlView = src.slice(src.indexOf('export function UrlView'));
+  assert.match(src, /cacheMode=\{CMS_HTML_CACHE_MODE\}/);
+  assert.equal(urlView.includes('cacheMode='), false);
+  assert.equal(urlView.includes('cacheMode={'), false);
+});
+
+test('iOS initial load of baseUrl is allowed; other https goes to /web; CMS host is blocked', () => {
+  const base = 'https://domenicospizza.com.au/';
+  assert.equal(htmlViewNavDecision('about:blank', base), 'allow');
+  assert.equal(htmlViewNavDecision('https://domenicospizza.com.au/', base), 'allow');
+  assert.equal(htmlViewNavDecision('https://domenicospizza.com.au', base), 'allow');
+  assert.equal(htmlViewNavDecision('https://domenicospizza.com.au/menu', base), 'web');
+  assert.equal(htmlViewNavDecision('https://www.youtube.com/embed/abc', base), 'web');
+  assert.equal(htmlViewNavDecision('https://mobileforge-studio.lovable.app/api', base), 'block');
+  assert.equal(htmlViewNavDecision('tel:0733431144', base), 'link');
+  assert.equal(isHtmlViewDocumentUrl('https://localhost/', 'https://localhost/'), true);
+  assert.equal(htmlViewNavDecision('https://localhost/', 'https://localhost/'), 'allow');
+});
+
+test('Android hardware back is consumed only when the WebView can go back and is active', () => {
+  assert.equal(shouldConsumeAndroidBack(true, true), true);
+  assert.equal(shouldConsumeAndroidBack(false, true), false);
+  assert.equal(shouldConsumeAndroidBack(true, false), false);
 });

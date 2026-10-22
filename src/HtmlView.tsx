@@ -1,9 +1,24 @@
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { ActivityIndicator, Animated, Easing, Linking, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Animated,
+  BackHandler,
+  Easing,
+  Linking,
+  Platform,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useConfig, useTheme } from './ConfigProvider';
-import { resolveHtmlBaseUrl } from './htmlAssets';
+import {
+  CMS_HTML_CACHE_MODE,
+  htmlViewNavDecision,
+  resolveHtmlBaseUrl,
+  shouldConsumeAndroidBack,
+} from './htmlViewPolicy';
 
 const SYSTEM_STACK =
   '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", system-ui, sans-serif';
@@ -34,22 +49,57 @@ function buildHtmlDocument(html: string, theme: ThemeTokens) {
 </head><body>${html}</body></html>`;
 }
 
+function useAndroidWebViewBack(ref: React.RefObject<WebView | null>, enabled: boolean) {
+  const canGoBack = useRef(false);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android' || !enabled) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!shouldConsumeAndroidBack(canGoBack.current, enabled)) return false;
+      ref.current?.goBack();
+      return true;
+    });
+    return () => sub.remove();
+  }, [enabled, ref]);
+
+  return {
+    onNavigationStateChange: (nav: { canGoBack?: boolean }) => {
+      canGoBack.current = !!nav.canGoBack;
+    },
+  };
+}
+
 /**
  * Renders CMS HTML (home sections, page-builder pages) exactly like the
  * dashboard preview: same font stack, same theme tokens.
  *
  * The page background stays visible until `onLoadEnd`, then the WebView fades
- * in. `baseUrl` is a real https origin so WKWebView/Android can cache images.
+ * in. `baseUrl` is the client's https origin so WKWebView/Android can cache images.
  */
-export const HtmlView = React.memo(function HtmlView({ html }: { html: string }) {
+export const HtmlView = React.memo(function HtmlView({
+  html,
+  active = true,
+}: {
+  html: string;
+  active?: boolean;
+}) {
   const theme = useTheme();
   const { config } = useConfig();
   const router = useRouter();
   const cover = useRef(new Animated.Value(1)).current;
   const htmlRef = useRef(html);
+  const webRef = useRef<WebView>(null);
+  const androidBack = useAndroidWebViewBack(webRef, active);
 
-  const fallback = (config?.webview as { url?: string } | undefined)?.url ?? null;
-  const baseUrl = useMemo(() => resolveHtmlBaseUrl(html, fallback), [html, fallback]);
+  const baseUrl = useMemo(
+    () =>
+      resolveHtmlBaseUrl({
+        webviewUrl: (config?.webview as { url?: string } | undefined)?.url,
+        domain: config?.app?.domain,
+        siteUrl: (config?.app as { website?: string; url?: string } | undefined)?.website,
+      }),
+    [config],
+  );
   const doc = useMemo(() => buildHtmlDocument(html, theme), [html, theme]);
   const source = useMemo(() => ({ html: doc, baseUrl }), [doc, baseUrl]);
 
@@ -71,30 +121,29 @@ export const HtmlView = React.memo(function HtmlView({ html }: { html: string })
   return (
     <View style={[styles.web, { backgroundColor: theme.background }]}>
       <WebView
+        ref={webRef}
         originWhitelist={['*']}
         source={source}
         style={[styles.web, { backgroundColor: theme.background }]}
         javaScriptEnabled
         domStorageEnabled
         cacheEnabled
-        cacheMode="LOAD_CACHE_ELSE_NETWORK"
+        cacheMode={CMS_HTML_CACHE_MODE}
         setSupportMultipleWindows={false}
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
         onLoadEnd={onLoadEnd}
+        onNavigationStateChange={androidBack.onNavigationStateChange}
         onShouldStartLoadWithRequest={(req) => {
-          if (req.url === 'about:blank' || req.url.startsWith('data:') || req.url.startsWith('file:')) return true;
-          // Never let the CMS/API host itself be opened as a page (it requires a login).
-          if (/mobileforge-studio\.lovable\.app/i.test(req.url)) return false;
-          if (/^(tel:|mailto:|sms:)/i.test(req.url)) {
+          const decision = htmlViewNavDecision(req.url, baseUrl, { isTopFrame: req.isTopFrame });
+          if (decision === 'allow') return true;
+          if (decision === 'block') return false;
+          if (decision === 'link') {
             Linking.openURL(req.url).catch(() => {});
             return false;
           }
-          if (/^https?:\/\//i.test(req.url) && req.isTopFrame !== false) {
-            router.push({ pathname: '/web', params: { url: req.url } });
-            return false;
-          }
-          return true;
+          router.push({ pathname: '/web', params: { url: req.url } });
+          return false;
         }}
       />
       <Animated.View
@@ -106,12 +155,14 @@ export const HtmlView = React.memo(function HtmlView({ html }: { html: string })
 });
 
 /** Full-screen in-app browser used for every external navigation target. */
-export function UrlView({ url }: { url: string }) {
+export function UrlView({ url, active = true }: { url: string; active?: boolean }) {
   const theme = useTheme();
   const { config } = useConfig();
   const wv = (config?.webview ?? {}) as Record<string, any>;
   const [loading, setLoading] = React.useState(true);
   const [failed, setFailed] = React.useState(false);
+  const webRef = useRef<WebView>(null);
+  const androidBack = useAndroidWebViewBack(webRef, active);
 
   const uri = /^https?:\/\//i.test(url) ? url : `https://${url}`;
 
@@ -134,13 +185,15 @@ export function UrlView({ url }: { url: string }) {
   return (
     <View style={[styles.web, { backgroundColor: theme.background }]}>
       <WebView
+        ref={webRef}
         source={{ uri }}
         originWhitelist={['*']}
         style={[styles.web, { backgroundColor: theme.background }]}
         javaScriptEnabled
         domStorageEnabled
         cacheEnabled
-        cacheMode="LOAD_CACHE_ELSE_NETWORK"
+        // Intentionally no cacheMode: Android LOAD_CACHE_ELSE_NETWORK would
+        // serve stale Order menus, prices and Account logins.
         thirdPartyCookiesEnabled={wv.cookies !== false}
         sharedCookiesEnabled={wv.cookies !== false}
         pullToRefreshEnabled={wv.pullToRefresh !== false}
@@ -153,6 +206,7 @@ export function UrlView({ url }: { url: string }) {
           // Some sites block the default RN WebView UA — present as mobile Safari/Chrome.
           undefined
         }
+        onNavigationStateChange={androidBack.onNavigationStateChange}
         onLoadEnd={() => setLoading(false)}
         onError={() => {
           setLoading(false);

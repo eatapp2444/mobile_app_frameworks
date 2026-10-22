@@ -1,60 +1,97 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useConfig, useTheme } from './ConfigProvider';
 import { homeHtml } from './home';
 import { HtmlView, UrlView } from './HtmlView';
-import { activePaneKey, panesFromConfig, shouldMountPane, type TabPane } from './tabPanes';
+import {
+  PAGE_UNAVAILABLE_MESSAGE,
+  activePaneKey,
+  panesFromConfig,
+  selectMountedPaneKeys,
+  type TabPane,
+} from './tabPanes';
 
 /**
- * Keeps every tab destination's WebView mounted for the life of the session.
+ * Keeps tab destination WebViews mounted for the session (with a cap).
  *
  * Expo Router Tabs cannot do this for EatApp: tab targets are CMS-driven, and
  * both `/p/[slug]` and `/web` are a single route whose params change — that
  * still tears down the WebView. Stack `replace` (see TabBar) only updates the
  * URL for the app bar / active tab; this host owns the actual views.
  */
-export function TabKeepAlive({ pathname, webUrl }: { pathname: string; webUrl?: string }) {
+export function TabKeepAlive({
+  pathname,
+  webUrl,
+  interactive = true,
+}: {
+  pathname: string;
+  webUrl?: string;
+  interactive?: boolean;
+}) {
   const { config } = useConfig();
   const panes = useMemo(() => panesFromConfig(config), [config]);
+  const known = useMemo(() => new Set<string>(panes.map((p) => p.key)), [panes]);
   const resolved = activePaneKey(pathname, webUrl);
   const lastKey = useRef<string>('home');
-  if (resolved) lastKey.current = resolved;
-  const active = resolved ?? lastKey.current;
-  const [visitedWeb, setVisitedWeb] = useState<Set<string>>(() => new Set());
+  if (resolved && known.has(resolved)) lastKey.current = resolved;
+  const active = resolved && known.has(resolved) ? resolved : lastKey.current;
+  const [visited, setVisited] = useState<string[]>(['home']);
 
   useEffect(() => {
-    if (!active.startsWith('web:')) return;
-    setVisitedWeb((prev) => {
-      if (prev.has(active)) return prev;
-      const next = new Set(prev);
-      next.add(active);
+    if (!active) return;
+    setVisited((prev) => {
+      const next = prev.filter((k) => k !== active);
+      next.push(active);
       return next;
     });
   }, [active]);
 
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'background') return;
+      const eagerHtml = new Set<string>(panes.filter((p) => p.eager && p.kind !== 'web').map((p) => p.key));
+      setVisited((prev) => prev.filter((k) => k === lastKey.current || eagerHtml.has(k)));
+    });
+    return () => sub.remove();
+  }, [panes]);
+
+  const mountedKeys = useMemo(
+    () => new Set<string>(selectMountedPaneKeys(panes, active, visited)),
+    [panes, active, visited],
+  );
+
+  const showUnavailable = !!resolved && resolved.startsWith('page:') && !known.has(resolved);
+
   return (
     <View style={styles.host} collapsable={false}>
-      {panes.filter((pane) => shouldMountPane(pane, active, visitedWeb)).map((pane) => (
-        <View
-          key={pane.key}
-          collapsable={false}
-          pointerEvents={pane.key === active ? 'auto' : 'none'}
-          style={[styles.pane, { zIndex: pane.key === active ? 1 : 0 }]}
-        >
-          <PaneBody pane={pane} />
+      {panes
+        .filter((pane) => mountedKeys.has(pane.key))
+        .map((pane) => (
+          <View
+            key={pane.key}
+            collapsable={false}
+            pointerEvents={interactive && !showUnavailable && pane.key === active ? 'auto' : 'none'}
+            style={[styles.pane, { zIndex: !showUnavailable && pane.key === active ? 1 : 0 }]}
+          >
+            <PaneBody pane={pane} active={interactive && pane.key === active} />
+          </View>
+        ))}
+      {showUnavailable ? (
+        <View style={[styles.pane, { zIndex: 2 }]} pointerEvents="auto">
+          <UnavailablePane />
         </View>
-      ))}
+      ) : null}
     </View>
   );
 }
 
-const PaneBody = React.memo(function PaneBody({ pane }: { pane: TabPane }) {
-  if (pane.kind === 'home') return <HomePane />;
-  if (pane.kind === 'page') return <PagePane slug={pane.slug} />;
-  return <UrlView url={pane.url} />;
+const PaneBody = React.memo(function PaneBody({ pane, active }: { pane: TabPane; active: boolean }) {
+  if (pane.kind === 'home') return <HomePane active={active} />;
+  if (pane.kind === 'page') return <PagePane slug={pane.slug} active={active} />;
+  return <UrlView url={pane.url} active={active} />;
 });
 
-function HomePane() {
+function HomePane({ active }: { active: boolean }) {
   const { config, loading, refresh } = useConfig();
   const theme = useTheme();
   const html = useMemo(() => homeHtml(config), [config]);
@@ -80,33 +117,38 @@ function HomePane() {
     );
   }
 
-  return <HtmlView html={html} />;
+  return <HtmlView html={html} active={active} />;
 }
 
-function PagePane({ slug }: { slug: string }) {
+function PagePane({ slug, active }: { slug: string; active: boolean }) {
   const { config } = useConfig();
   const theme = useTheme();
   const key = slug.replace(/^\//, '');
   const page = (config?.pages ?? []).find((p) => String(p.slug ?? '').replace(/^\//, '') === key);
 
   if (!page) {
-    return (
-      <View style={[styles.center, { backgroundColor: theme.background }]}>
-        <Text style={{ color: theme.textSecondary }}>This page is not available yet.</Text>
-      </View>
-    );
+    return <UnavailablePane />;
   }
 
   const url = (page as { url?: string }).url;
   const urlTypes = ['iframe', 'pdf', 'youtube', 'video', 'api', 'external'];
   if (url && (urlTypes.includes(String(page.type)) || /^https?:\/\//i.test(url))) {
-    return <UrlView url={url} />;
+    return <UrlView url={url} active={active} />;
   }
-  return <HtmlView html={page.html ?? ''} />;
+  return <HtmlView html={page.html ?? ''} active={active} />;
+}
+
+export function UnavailablePane() {
+  const theme = useTheme();
+  return (
+    <View style={[styles.center, { backgroundColor: theme.background }]}>
+      <Text style={{ color: theme.textSecondary }}>{PAGE_UNAVAILABLE_MESSAGE}</Text>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
   host: { flex: 1 },
   pane: { ...StyleSheet.absoluteFillObject },
-  center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  center: { flexGrow: 1, flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
 });

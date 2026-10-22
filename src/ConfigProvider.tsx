@@ -1,6 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { AppConfig, bundledConfig, cachedConfig, fetchConfig } from './config';
-import { collectPageImageUrls } from './htmlAssets';
 
 type Ctx = {
   config: AppConfig | null;
@@ -72,23 +71,6 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
       alive = false;
     };
   }, [refresh]);
-
-  useEffect(() => {
-    if (!config) return;
-    const urls = collectPageImageUrls(config);
-    if (!urls.length) return;
-    let cancelled = false;
-    void import('expo-image')
-      .then(({ Image }) => {
-        if (!cancelled) return Image.prefetch(urls);
-      })
-      .catch(() => {
-        /* expo-image is optional at runtime (Expo Go / tests) */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [config]);
 
   return <ConfigContext.Provider value={{ config, loading, refresh }}>{children}</ConfigContext.Provider>;
 }

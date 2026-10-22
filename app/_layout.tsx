@@ -95,7 +95,7 @@ function Shell() {
           pointerEvents={overlay ? 'none' : 'auto'}
           style={[styles.keepAlive, overlay ? styles.back : styles.front]}
         >
-          <TabKeepAlive pathname={pathname} webUrl={webUrl} />
+          <TabKeepAlive pathname={pathname} webUrl={webUrl} interactive={!overlay} />
         </View>
       </View>
       <TabBar />

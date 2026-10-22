@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { collectPageImageUrls, resolveHtmlBaseUrl } from './htmlAssets';
-import { isOverlayPath, panesFromConfig } from './tabPanes';
+import { resolveHtmlBaseUrl } from './htmlViewPolicy';
+import { isOverlayPath, panesFromConfig, shouldMountPane } from './tabPanes';
 
 const CONFIG_URL =
   'https://mobileforge-studio.lovable.app/api/public/apps/config/com.domenicospizzapastaribs.clientapp';
 
-test('live Domenico config: keep-alive panes, wordpress baseUrl, page image prefetch list', async (t) => {
+test('live Domenico config: eager nav panes, site baseUrl, unknown slug overlay', async (t) => {
   let payload: any;
   try {
     const res = await fetch(CONFIG_URL, { headers: { Accept: 'application/json' } });
@@ -24,18 +24,19 @@ test('live Domenico config: keep-alive panes, wordpress baseUrl, page image pref
   assert.equal(config?.app?.bundleId, 'com.domenicospizzapastaribs.clientapp');
 
   const panes = panesFromConfig(config);
-  assert.ok(panes.some((p) => p.key === 'home'));
-  assert.ok(panes.some((p) => p.key === 'page:about-us'));
-  assert.ok(panes.some((p) => p.kind === 'web' && /orderexperience\.net/.test(p.url)));
-  assert.ok(panes.some((p) => p.kind === 'web' && /orders\.eatapp\.online/.test(p.url)));
+  assert.ok(panes.some((p) => p.key === 'home' && p.eager));
+  assert.ok(panes.some((p) => p.key === 'page:about-us' && p.eager));
+  const order = panes.find((p) => p.kind === 'web' && /orderexperience\.net/.test(p.url));
+  assert.ok(order);
+  assert.equal(shouldMountPane(order!, 'home', []), false);
 
   const keys = panes.map((p) => p.key);
   assert.equal(isOverlayPath('/notifications', undefined, keys), true);
   assert.equal(isOverlayPath('/', undefined, keys), false);
+  assert.equal(isOverlayPath('/p/missing-page', undefined, keys), true);
 
-  const homeHtml = String(config.home?.html ?? '');
-  assert.equal(resolveHtmlBaseUrl(homeHtml, config.webview?.url), 'https://domenicospizza.com.au/');
-  const images = collectPageImageUrls(config);
-  assert.ok(images.some((u) => u.includes('wp-content/uploads')));
-  assert.ok(images.every((u) => u.startsWith('https://')));
+  assert.equal(
+    resolveHtmlBaseUrl({ webviewUrl: config.webview?.url, domain: config.app?.domain }),
+    'https://domenicospizza.com.au/',
+  );
 });
