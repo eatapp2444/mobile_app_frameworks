@@ -50,17 +50,21 @@ test('LOAD_CACHE_ELSE_NETWORK is CMS HtmlView only — UrlView must revalidate',
   assert.equal(urlView.includes('cacheMode={'), false);
 });
 
-test('iOS initial load of baseUrl is allowed; other https goes to /web; CMS host is blocked', () => {
+test('iOS initial load of baseUrl is allowed; later homepage taps go to /web; CMS host is blocked', () => {
   const base = 'https://domenicospizza.com.au/';
   assert.equal(htmlViewNavDecision('about:blank', base), 'allow');
   assert.equal(htmlViewNavDecision('https://domenicospizza.com.au/', base), 'allow');
   assert.equal(htmlViewNavDecision('https://domenicospizza.com.au', base), 'allow');
+  assert.equal(htmlViewNavDecision(base, base, { documentLoaded: true }), 'web');
+  assert.equal(htmlViewNavDecision(base, base, { navigationType: 'click' }), 'web');
+  assert.equal(htmlViewNavDecision(base, base, { documentLoaded: true, isTopFrame: false }), 'allow');
   assert.equal(htmlViewNavDecision('https://domenicospizza.com.au/menu', base), 'web');
   assert.equal(htmlViewNavDecision('https://www.youtube.com/embed/abc', base), 'web');
   assert.equal(htmlViewNavDecision('https://mobileforge-studio.lovable.app/api', base), 'block');
   assert.equal(htmlViewNavDecision('tel:0733431144', base), 'link');
   assert.equal(isHtmlViewDocumentUrl('https://localhost/', 'https://localhost/'), true);
   assert.equal(htmlViewNavDecision('https://localhost/', 'https://localhost/'), 'allow');
+  assert.equal(htmlViewNavDecision('https://localhost/', 'https://localhost/', { documentLoaded: true }), 'web');
 });
 
 test('Android hardware back is consumed only when the WebView can go back and is active', () => {

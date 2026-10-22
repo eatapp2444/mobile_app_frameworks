@@ -68,16 +68,30 @@ export function isHtmlViewDocumentUrl(url: string, baseUrl: string): boolean {
 
 export type HtmlViewNavDecision = 'allow' | 'block' | 'link' | 'web';
 
+export type HtmlViewNavOpts = {
+  isTopFrame?: boolean;
+  /** WKWebView `navigationType`: `click` is a later user tap, even on the homepage. */
+  navigationType?: string;
+  /** True after the HTML document has finished its first load. */
+  documentLoaded?: boolean;
+};
+
 export function htmlViewNavDecision(
   url: string,
   baseUrl: string,
-  opts: { isTopFrame?: boolean } = {},
+  opts: HtmlViewNavOpts = {},
 ): HtmlViewNavDecision {
   if (!url || url === 'about:blank' || url.startsWith('data:') || url.startsWith('file:')) return 'allow';
-  // Initial document load (iOS): req.url === baseUrl. Must run before the https → /web rule.
-  if (isHtmlViewDocumentUrl(url, baseUrl)) return 'allow';
   if (/^(tel:|mailto:|sms:)/i.test(url)) return 'link';
-  if (/mobileforge-studio\.lovable\.app/i.test(url)) return 'block';
+  if (/mobileforge-studio\.lovable\.app/i.test(url) && !isHtmlViewDocumentUrl(url, baseUrl)) return 'block';
+  if (isHtmlViewDocumentUrl(url, baseUrl)) {
+    // iOS fires the initial HTML load as req.url === baseUrl. Later taps on the
+    // client's homepage must follow the normal https → /web rule.
+    if (opts.isTopFrame === false) return 'allow';
+    const userTap = opts.navigationType === 'click' || opts.navigationType === 'formsubmit';
+    if (!opts.documentLoaded && !userTap) return 'allow';
+    return 'web';
+  }
   if (/^https?:\/\//i.test(url) && opts.isTopFrame !== false) return 'web';
   return 'allow';
 }

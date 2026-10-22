@@ -3,16 +3,19 @@ import { test } from 'node:test';
 import type { AppConfig, NavItem } from './config';
 import { firstParam, resolveNavAction, resolvePathname } from './navCore';
 import {
+  KEEP_ALIVE_BACKGROUND_TRIM_MS,
   MAX_MOUNTED_PANES,
   PAGE_UNAVAILABLE_MESSAGE,
   activePaneKey,
   collectNavDestinations,
   isOverlayPath,
   keysAfterMemoryPressure,
+  paneEvictionRank,
   paneFromNavItem,
   panesFromConfig,
   selectMountedPaneKeys,
   shouldMountPane,
+  shouldTrimKeepAlive,
 } from './tabPanes';
 
 const domenicoNav: NavItem[] = [
@@ -154,6 +157,46 @@ test('memory pressure unmounts Order/Account and lazy pages, keeps eager CMS tab
   assert.ok(!after.includes(order.key));
   assert.ok(!after.includes('page:catering'));
   assert.ok(keysAfterMemoryPressure(panes, order.key).includes(order.key));
+});
+
+test('short background trips do not trim Order/Account; memory warning and 10min do', () => {
+  assert.equal(shouldTrimKeepAlive({ type: 'background' }), false);
+  assert.equal(shouldTrimKeepAlive({ type: 'memoryWarning' }), true);
+  assert.equal(KEEP_ALIVE_BACKGROUND_TRIM_MS, 10 * 60 * 1000);
+  assert.equal(
+    shouldTrimKeepAlive({ type: 'backgroundElapsed', elapsedMs: 30_000 }),
+    false,
+  );
+  assert.equal(
+    shouldTrimKeepAlive({ type: 'backgroundElapsed', elapsedMs: KEEP_ALIVE_BACKGROUND_TRIM_MS }),
+    true,
+  );
+  assert.equal(
+    shouldTrimKeepAlive({ type: 'active', backgroundedAt: 1_000, now: 1_000 + 60_000 }),
+    false,
+  );
+  assert.equal(
+    shouldTrimKeepAlive({
+      type: 'active',
+      backgroundedAt: 1_000,
+      now: 1_000 + KEEP_ALIVE_BACKGROUND_TRIM_MS,
+    }),
+    true,
+  );
+});
+
+test('eviction ranking is active > Order/Account > other panes', () => {
+  const panes = panesFromConfig(config);
+  const order = panes.find((p) => p.kind === 'web' && p.url.includes('orderexperience'))!;
+  const account = panes.find((p) => p.kind === 'web' && p.url.includes('eatapp.online'))!;
+  assert.equal(paneEvictionRank(panes.find((p) => p.key === 'home'), 'home'), 0);
+  assert.equal(paneEvictionRank(order, 'home'), 1);
+  assert.equal(paneEvictionRank(panes.find((p) => p.key === 'page:about-us'), 'home'), 2);
+  assert.equal(paneEvictionRank(panes.find((p) => p.key === 'page:catering'), 'home'), 3);
+  const keys = selectMountedPaneKeys(panes, 'home', [order.key, account.key, 'page:catering'], 3);
+  assert.deepEqual(keys, ['home', account.key, order.key]);
+  assert.ok(!keys.includes('page:catering'));
+  assert.ok(!keys.includes('page:about-us'));
 });
 
 test('unknown /p/<slug> overlays with the unavailable message, not a blank keep-alive', () => {

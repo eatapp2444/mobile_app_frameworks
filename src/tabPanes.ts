@@ -96,9 +96,18 @@ export function shouldMountPane(pane: TabPane, activeKey: string, visited: Itera
   return visitedSet(visited).has(pane.key);
 }
 
+/** Lower number is kept first when the mount cap is exceeded. */
+export function paneEvictionRank(pane: TabPane | undefined, activeKey: string): number {
+  if (!pane) return 99;
+  if (pane.key === activeKey) return 0;
+  if (pane.kind === 'web') return 1; // Order / Account
+  if (pane.eager) return 2;
+  return 3;
+}
+
 /**
- * Which panes may keep a WebView given the cap. Active always wins; eager CMS
- * tabs fill next; visited lazy/web panes fill the rest (newest first).
+ * Which panes may keep a WebView given the cap.
+ * Ranking: active > Order/Account (web) > other panes. Newer visits win ties.
  */
 export function selectMountedPaneKeys(
   panes: TabPane[],
@@ -106,25 +115,19 @@ export function selectMountedPaneKeys(
   visitedLru: Iterable<string>,
   cap = MAX_MOUNTED_PANES,
 ): string[] {
-  const known = new Set<string>(panes.map((p) => p.key));
   const visited = Array.from(visitedLru);
-  const ranked: string[] = [];
-  const push = (key: string) => {
-    if (!key || ranked.includes(key)) return;
-    if (key !== activeKey && !known.has(key)) return;
-    ranked.push(key);
-  };
-
-  push(activeKey);
-  for (const pane of panes) {
-    if (pane.eager && pane.kind !== 'web') push(pane.key);
-  }
-  for (let i = visited.length - 1; i >= 0; i--) push(visited[i]);
+  const candidates = panes.filter((pane) => shouldMountPane(pane, activeKey, visited));
+  candidates.sort((a, b) => {
+    const rank = paneEvictionRank(a, activeKey) - paneEvictionRank(b, activeKey);
+    if (rank !== 0) return rank;
+    return visited.lastIndexOf(b.key) - visited.lastIndexOf(a.key);
+  });
 
   const out: string[] = [];
-  for (const key of ranked) {
-    if (key === activeKey || out.length < cap) out.push(key);
+  for (const pane of candidates) {
+    if (pane.key === activeKey || out.length < cap) out.push(pane.key);
   }
+  if (activeKey && !out.includes(activeKey)) out.unshift(activeKey);
   return out.slice(0, Math.max(cap, out.includes(activeKey) ? 1 : 0));
 }
 
@@ -135,6 +138,27 @@ export function keysAfterMemoryPressure(
   cap = MAX_MOUNTED_PANES,
 ): string[] {
   return selectMountedPaneKeys(panes, activeKey, [], cap);
+}
+
+/** Short background trips (SMS codes) must not unmount Order/Account. */
+export const KEEP_ALIVE_BACKGROUND_TRIM_MS = 10 * 60 * 1000;
+
+export function shouldTrimKeepAlive(
+  event:
+    | { type: 'memoryWarning' }
+    | { type: 'background' }
+    | { type: 'backgroundElapsed'; elapsedMs: number; thresholdMs?: number }
+    | { type: 'active'; backgroundedAt: number | null; now?: number; thresholdMs?: number },
+): boolean {
+  const threshold =
+    'thresholdMs' in event && event.thresholdMs != null
+      ? event.thresholdMs
+      : KEEP_ALIVE_BACKGROUND_TRIM_MS;
+  if (event.type === 'memoryWarning') return true;
+  if (event.type === 'background') return false;
+  if (event.type === 'backgroundElapsed') return event.elapsedMs >= threshold;
+  if (event.backgroundedAt == null) return false;
+  return (event.now ?? Date.now()) - event.backgroundedAt >= threshold;
 }
 
 /** Notifications (bell), unknown `/p/<slug>`, and ad-hoc in-app browser sit on top of keep-alive tabs. */

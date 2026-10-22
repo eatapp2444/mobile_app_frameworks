@@ -4,10 +4,12 @@ import { useConfig, useTheme } from './ConfigProvider';
 import { homeHtml } from './home';
 import { HtmlView, UrlView } from './HtmlView';
 import {
+  KEEP_ALIVE_BACKGROUND_TRIM_MS,
   PAGE_UNAVAILABLE_MESSAGE,
   activePaneKey,
   panesFromConfig,
   selectMountedPaneKeys,
+  shouldTrimKeepAlive,
   type TabPane,
 } from './tabPanes';
 
@@ -47,12 +49,49 @@ export function TabKeepAlive({
   }, [active]);
 
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state !== 'background') return;
-      const eagerHtml = new Set<string>(panes.filter((p) => p.eager && p.kind !== 'web').map((p) => p.key));
+    const eagerHtmlKeys = () =>
+      new Set<string>(panes.filter((p) => p.eager && p.kind !== 'web').map((p) => p.key));
+    const trimInactiveWeb = () => {
+      const eagerHtml = eagerHtmlKeys();
       setVisited((prev) => prev.filter((k) => k === lastKey.current || eagerHtml.has(k)));
+    };
+
+    let backgroundedAt: number | null = null;
+    let trimTimer: ReturnType<typeof setTimeout> | null = null;
+    const clearTrimTimer = () => {
+      if (!trimTimer) return;
+      clearTimeout(trimTimer);
+      trimTimer = null;
+    };
+
+    const changeSub = AppState.addEventListener('change', (state) => {
+      if (state === 'background') {
+        backgroundedAt = Date.now();
+        clearTrimTimer();
+        trimTimer = setTimeout(() => {
+          if (shouldTrimKeepAlive({ type: 'backgroundElapsed', elapsedMs: KEEP_ALIVE_BACKGROUND_TRIM_MS })) {
+            trimInactiveWeb();
+          }
+        }, KEEP_ALIVE_BACKGROUND_TRIM_MS);
+        return;
+      }
+      if (state === 'active') {
+        const started = backgroundedAt;
+        backgroundedAt = null;
+        clearTrimTimer();
+        if (shouldTrimKeepAlive({ type: 'active', backgroundedAt: started, now: Date.now() })) {
+          trimInactiveWeb();
+        }
+      }
     });
-    return () => sub.remove();
+    const memorySub = AppState.addEventListener('memoryWarning', () => {
+      if (shouldTrimKeepAlive({ type: 'memoryWarning' })) trimInactiveWeb();
+    });
+    return () => {
+      changeSub.remove();
+      memorySub.remove();
+      clearTrimTimer();
+    };
   }, [panes]);
 
   const mountedKeys = useMemo(

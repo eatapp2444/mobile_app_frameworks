@@ -88,6 +88,7 @@ export const HtmlView = React.memo(function HtmlView({
   const router = useRouter();
   const cover = useRef(new Animated.Value(1)).current;
   const htmlRef = useRef(html);
+  const documentLoaded = useRef(false);
   const webRef = useRef<WebView>(null);
   const androidBack = useAndroidWebViewBack(webRef, active);
 
@@ -106,10 +107,12 @@ export const HtmlView = React.memo(function HtmlView({
   useEffect(() => {
     if (htmlRef.current === html) return;
     htmlRef.current = html;
+    documentLoaded.current = false;
     cover.setValue(1);
   }, [html, cover]);
 
   const onLoadEnd = useCallback(() => {
+    documentLoaded.current = true;
     Animated.timing(cover, {
       toValue: 0,
       duration: 220,
@@ -135,7 +138,11 @@ export const HtmlView = React.memo(function HtmlView({
         onLoadEnd={onLoadEnd}
         onNavigationStateChange={androidBack.onNavigationStateChange}
         onShouldStartLoadWithRequest={(req) => {
-          const decision = htmlViewNavDecision(req.url, baseUrl, { isTopFrame: req.isTopFrame });
+          const decision = htmlViewNavDecision(req.url, baseUrl, {
+            isTopFrame: req.isTopFrame,
+            navigationType: req.navigationType,
+            documentLoaded: documentLoaded.current,
+          });
           if (decision === 'allow') return true;
           if (decision === 'block') return false;
           if (decision === 'link') {
