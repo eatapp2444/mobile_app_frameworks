@@ -3,7 +3,11 @@ import { isCmsHost, isExternalUrl } from './navCore';
 
 export const PAGE_UNAVAILABLE_MESSAGE = 'This page is not available yet.';
 
-/** Hard cap on simultaneously mounted WebViews (eager tabs + visited lazy/web). */
+/**
+ * Hard cap on simultaneously mounted WebViews (eager tabs + visited lazy/web).
+ * More than 6 destinations will evict eager CMS tabs: ranking is
+ * active > Order/Account > other eager HTML > lazy pages.
+ */
 export const MAX_MOUNTED_PANES = 6;
 
 export type TabPane =
@@ -107,7 +111,9 @@ export function paneEvictionRank(pane: TabPane | undefined, activeKey: string): 
 
 /**
  * Which panes may keep a WebView given the cap.
- * Ranking: active > Order/Account (web) > other panes. Newer visits win ties.
+ * Ranking: active > Order/Account (web) > eager CMS tabs > lazy pages.
+ * Newer visits win ties. Exceeding MAX_MOUNTED_PANES therefore evicts eager
+ * CMS HtmlViews before it evicts a visited Order/Account WebView.
  */
 export function selectMountedPaneKeys(
   panes: TabPane[],
@@ -140,7 +146,11 @@ export function keysAfterMemoryPressure(
   return selectMountedPaneKeys(panes, activeKey, [], cap);
 }
 
-/** Short background trips (SMS codes) must not unmount Order/Account. */
+/**
+ * Short background trips (SMS codes) must not unmount Order/Account.
+ * `memoryWarning` is iOS-only (RN does not emit it on Android); Android
+ * therefore relies on this 10-minute background timer / resume check.
+ */
 export const KEEP_ALIVE_BACKGROUND_TRIM_MS = 10 * 60 * 1000;
 
 export function shouldTrimKeepAlive(
@@ -154,7 +164,7 @@ export function shouldTrimKeepAlive(
     'thresholdMs' in event && event.thresholdMs != null
       ? event.thresholdMs
       : KEEP_ALIVE_BACKGROUND_TRIM_MS;
-  if (event.type === 'memoryWarning') return true;
+  if (event.type === 'memoryWarning') return true; // iOS-only; Android uses the 10-min rule
   if (event.type === 'background') return false;
   if (event.type === 'backgroundElapsed') return event.elapsedMs >= threshold;
   if (event.backgroundedAt == null) return false;

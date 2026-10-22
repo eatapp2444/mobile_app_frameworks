@@ -66,6 +66,19 @@ export function isHtmlViewDocumentUrl(url: string, baseUrl: string): boolean {
   return a === b;
 }
 
+export type HtmlViewSource = { html: string; baseUrl: string };
+
+/**
+ * WebView `source` rebuilds when HTML, theme tokens (baked into `html`), or
+ * `baseUrl` change — e.g. a config refresh mid-session. That reload's first
+ * iOS request is `baseUrl` again, so `documentLoaded` must reset *during
+ * render* before `onShouldStartLoadWithRequest` runs.
+ */
+export function htmlViewSourceChanged(prev: HtmlViewSource | null, next: HtmlViewSource): boolean {
+  if (!prev) return false;
+  return prev.html !== next.html || prev.baseUrl !== next.baseUrl;
+}
+
 export type HtmlViewNavDecision = 'allow' | 'block' | 'link' | 'web';
 
 export type HtmlViewNavOpts = {

@@ -196,6 +196,7 @@ test('eviction ranking is active > Order/Account > other panes', () => {
   const keys = selectMountedPaneKeys(panes, 'home', [order.key, account.key, 'page:catering'], 3);
   assert.deepEqual(keys, ['home', account.key, order.key]);
   assert.ok(!keys.includes('page:catering'));
+  // Over the cap, eager CMS tabs (About) are evicted before Order/Account.
   assert.ok(!keys.includes('page:about-us'));
 });
 

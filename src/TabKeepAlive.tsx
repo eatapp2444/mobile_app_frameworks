@@ -84,6 +84,8 @@ export function TabKeepAlive({
         }
       }
     });
+    // iOS-only. Android never fires `memoryWarning`; it uses the 10-minute
+    // background timer / resume check above instead.
     const memorySub = AppState.addEventListener('memoryWarning', () => {
       if (shouldTrimKeepAlive({ type: 'memoryWarning' })) trimInactiveWeb();
     });

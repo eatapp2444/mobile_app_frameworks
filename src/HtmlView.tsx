@@ -16,6 +16,7 @@ import { useConfig, useTheme } from './ConfigProvider';
 import {
   CMS_HTML_CACHE_MODE,
   htmlViewNavDecision,
+  htmlViewSourceChanged,
   resolveHtmlBaseUrl,
   shouldConsumeAndroidBack,
 } from './htmlViewPolicy';
@@ -87,8 +88,8 @@ export const HtmlView = React.memo(function HtmlView({
   const { config } = useConfig();
   const router = useRouter();
   const cover = useRef(new Animated.Value(1)).current;
-  const htmlRef = useRef(html);
   const documentLoaded = useRef(false);
+  const sourceRef = useRef<{ html: string; baseUrl: string } | null>(null);
   const webRef = useRef<WebView>(null);
   const androidBack = useAndroidWebViewBack(webRef, active);
 
@@ -104,12 +105,13 @@ export const HtmlView = React.memo(function HtmlView({
   const doc = useMemo(() => buildHtmlDocument(html, theme), [html, theme]);
   const source = useMemo(() => ({ html: doc, baseUrl }), [doc, baseUrl]);
 
-  useEffect(() => {
-    if (htmlRef.current === html) return;
-    htmlRef.current = html;
+  // Sync during render: theme / baseUrl / html all rebuild `source` and iOS
+  // will immediately ask for baseUrl. A useEffect reset would run too late.
+  if (htmlViewSourceChanged(sourceRef.current, source)) {
     documentLoaded.current = false;
     cover.setValue(1);
-  }, [html, cover]);
+  }
+  sourceRef.current = source;
 
   const onLoadEnd = useCallback(() => {
     documentLoaded.current = true;

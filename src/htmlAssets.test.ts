@@ -8,6 +8,7 @@ import {
   DEFAULT_HTML_BASE_URL,
   URL_VIEW_CACHE_MODE,
   htmlViewNavDecision,
+  htmlViewSourceChanged,
   isHtmlViewDocumentUrl,
   resolveHtmlBaseUrl,
   shouldConsumeAndroidBack,
@@ -65,6 +66,24 @@ test('iOS initial load of baseUrl is allowed; later homepage taps go to /web; CM
   assert.equal(isHtmlViewDocumentUrl('https://localhost/', 'https://localhost/'), true);
   assert.equal(htmlViewNavDecision('https://localhost/', 'https://localhost/'), 'allow');
   assert.equal(htmlViewNavDecision('https://localhost/', 'https://localhost/', { documentLoaded: true }), 'web');
+});
+
+test('theme or baseUrl source rebuilds reset documentLoaded so iOS reload is allow, not /web', () => {
+  const base = 'https://domenicospizza.com.au/';
+  const before = { html: '<p>home</p>', baseUrl: base };
+  const afterTheme = { html: '<p>home</p><style>:root{--primary:#111}</style>', baseUrl: base };
+  const afterBase = { html: afterTheme.html, baseUrl: 'https://localhost/' };
+  assert.equal(htmlViewSourceChanged(null, before), false);
+  assert.equal(htmlViewSourceChanged(before, before), false);
+  assert.equal(htmlViewSourceChanged(before, afterTheme), true);
+  assert.equal(htmlViewSourceChanged(afterTheme, afterBase), true);
+  assert.equal(htmlViewNavDecision(base, base, { documentLoaded: true }), 'web');
+  assert.equal(htmlViewNavDecision(base, base, { documentLoaded: false }), 'allow');
+  assert.equal(htmlViewNavDecision(afterBase.baseUrl, afterBase.baseUrl, { documentLoaded: false }), 'allow');
+  const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'HtmlView.tsx'), 'utf8');
+  assert.match(src, /htmlViewSourceChanged\(sourceRef\.current, source\)/);
+  assert.match(src, /documentLoaded\.current = false/);
+  assert.doesNotMatch(src, /htmlRef\.current === html/);
 });
 
 test('Android hardware back is consumed only when the WebView can go back and is active', () => {
