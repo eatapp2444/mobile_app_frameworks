@@ -1,5 +1,6 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { AppConfig, bundledConfig, cachedConfig, fetchConfig } from './config';
+import { collectPageImageUrls } from './htmlAssets';
 
 type Ctx = {
   config: AppConfig | null;
@@ -22,30 +23,32 @@ function contrastOn(hex?: string) {
 
 export function useTheme() {
   const { config } = useConfig();
-  const t = (config?.theme ?? {}) as Record<string, any>;
-  const primary = t.primary ?? '#111827';
-  const appBar = t.appBar ?? t.appBarBackground ?? primary;
-  const family = String(t.fontFamily ?? 'System');
-  return {
-    primary,
-    secondary: t.secondary ?? primary,
-    background: t.background ?? '#FFFFFF',
-    surface: t.surface ?? '#F8FAFC',
-    card: t.card ?? '#FFFFFF',
-    text: t.text ?? '#0F172A',
-    textSecondary: t.textSecondary ?? '#64748B',
-    border: t.border ?? '#E2E8F0',
-    tabBar: t.tabBar ?? '#FFFFFF',
-    tabActive: t.tabActive ?? primary,
-    tabInactive: t.tabInactive ?? '#94A3B8',
-    appBar,
-    appBarText: t.appBarText ?? contrastOn(appBar),
-    cardRadius: Number(t.cardRadius ?? 14),
-    buttonRadius: Number(t.buttonRadius ?? 12),
-    fontStack: t.fontStack as string | undefined,
-    /** undefined => platform system font (SF Pro / Roboto). */
-    fontFamilyRN: family && family !== 'System' ? family : undefined,
-  };
+  return useMemo(() => {
+    const t = (config?.theme ?? {}) as Record<string, any>;
+    const primary = t.primary ?? '#111827';
+    const appBar = t.appBar ?? t.appBarBackground ?? primary;
+    const family = String(t.fontFamily ?? 'System');
+    return {
+      primary,
+      secondary: t.secondary ?? primary,
+      background: t.background ?? '#FFFFFF',
+      surface: t.surface ?? '#F8FAFC',
+      card: t.card ?? '#FFFFFF',
+      text: t.text ?? '#0F172A',
+      textSecondary: t.textSecondary ?? '#64748B',
+      border: t.border ?? '#E2E8F0',
+      tabBar: t.tabBar ?? '#FFFFFF',
+      tabActive: t.tabActive ?? primary,
+      tabInactive: t.tabInactive ?? '#94A3B8',
+      appBar,
+      appBarText: t.appBarText ?? contrastOn(appBar),
+      cardRadius: Number(t.cardRadius ?? 14),
+      buttonRadius: Number(t.buttonRadius ?? 12),
+      fontStack: t.fontStack as string | undefined,
+      /** undefined => platform system font (SF Pro / Roboto). */
+      fontFamilyRN: family && family !== 'System' ? family : undefined,
+    };
+  }, [config]);
 }
 
 export function ConfigProvider({ children }: { children: React.ReactNode }) {
@@ -69,6 +72,23 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
       alive = false;
     };
   }, [refresh]);
+
+  useEffect(() => {
+    if (!config) return;
+    const urls = collectPageImageUrls(config);
+    if (!urls.length) return;
+    let cancelled = false;
+    void import('expo-image')
+      .then(({ Image }) => {
+        if (!cancelled) return Image.prefetch(urls);
+      })
+      .catch(() => {
+        /* expo-image is optional at runtime (Expo Go / tests) */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [config]);
 
   return <ConfigContext.Provider value={{ config, loading, refresh }}>{children}</ConfigContext.Provider>;
 }

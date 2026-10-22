@@ -1,18 +1,20 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { usePathname, useRouter } from 'expo-router';
+import { useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NavItem } from './config';
 import { useConfig, useTheme } from './ConfigProvider';
 import { ion } from './icons';
-import { isExternalUrl, openNavTarget } from './nav';
+import { firstParam, isCmsHost, isExternalUrl, openNavTarget } from './nav';
 
 export function TabBar() {
   const { config } = useConfig();
   const theme = useTheme();
   const router = useRouter();
   const pathname = usePathname();
+  const params = useGlobalSearchParams<{ url?: string | string[] }>();
+  const webUrl = firstParam(params.url);
   const insets = useSafeAreaInsets();
   const [sheet, setSheet] = useState<{ title: string; items: NavItem[] } | null>(null);
 
@@ -38,8 +40,10 @@ export function TabBar() {
 
   const routeActive = (item: NavItem) => {
     const target = String(item.url || item.route || '/');
-    if (isExternalUrl(target)) return pathname.startsWith('/web');
-    return target === '/' ? pathname === '/' : pathname.endsWith(target);
+    if (isExternalUrl(target) && !isCmsHost(target)) {
+      return pathname.startsWith('/web') && webUrl === target;
+    }
+    return target === '/' ? pathname === '/' || pathname === '/index' : pathname.endsWith(target);
   };
 
   const isActive = (item: NavItem) => {
