@@ -161,7 +161,11 @@ function SoftNag({
   );
 }
 
-function useUpdateDecision(): { decision: UpdateDecision; installed: string; appName: string } {
+function useUpdateDecision(): {
+  decision: UpdateDecision;
+  installed: string | undefined;
+  appName: string;
+} {
   const { config } = useConfig();
   const installed = installedNativeVersion();
   const appName = config?.app?.name ?? 'the app';
@@ -189,7 +193,7 @@ function useUpdateDecision(): { decision: UpdateDecision; installed: string; app
 export function UpdateGate({ children }: { children: React.ReactNode }) {
   const { config, refresh } = useConfig();
   const { decision, installed, appName } = useUpdateDecision();
-  const [hideSoft, setHideSoft] = useState(false);
+  const [softNag, setSoftNag] = useState<'pending' | 'show' | 'hide'>('pending');
   const triedImmediate = useRef(false);
   const softVersion = decision.kind === 'soft' ? decision.latestVersion : '';
   const forced = decision.kind === 'forced';
@@ -206,10 +210,13 @@ export function UpdateGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let alive = true;
-    setHideSoft(false);
-    if (!softVersion) return;
+    if (!softVersion) {
+      setSoftNag('pending');
+      return;
+    }
+    setSoftNag('pending');
     wasSoftNagDismissedToday(BUNDLE_ID, softVersion).then((dismissed) => {
-      if (alive) setHideSoft(dismissed);
+      if (alive) setSoftNag(dismissed ? 'hide' : 'show');
     });
     return () => {
       alive = false;
@@ -217,13 +224,13 @@ export function UpdateGate({ children }: { children: React.ReactNode }) {
   }, [softVersion]);
 
   useEffect(() => {
-    if (!forced || Platform.OS !== 'android' || triedImmediate.current) return;
+    if (!forced || Platform.OS !== 'android' || !installed || triedImmediate.current) return;
     triedImmediate.current = true;
     startAndroidImmediateUpdate(installed).catch(() => false);
   }, [forced, installed]);
 
   const goToStore = async (url: string) => {
-    if (decision.kind === 'forced' && Platform.OS === 'android') {
+    if (decision.kind === 'forced' && Platform.OS === 'android' && installed) {
       const started = await startAndroidImmediateUpdate(installed);
       if (started) return;
     }
@@ -257,7 +264,7 @@ export function UpdateGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (decision.kind === 'soft' && !hideSoft) {
+  if (decision.kind === 'soft' && softNag === 'show') {
     return (
       <View style={{ flex: 1 }}>
         {children}
@@ -267,7 +274,7 @@ export function UpdateGate({ children }: { children: React.ReactNode }) {
             void goToStore(decision.storeUrl);
           }}
           onDismiss={() => {
-            setHideSoft(true);
+            setSoftNag('hide');
             void dismissSoftNagToday(BUNDLE_ID, decision.latestVersion);
           }}
         />

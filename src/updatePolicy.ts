@@ -1,4 +1,12 @@
-/** Compares dotted versions: -1 if a<b, 0 equal, 1 if a>b. */
+/**
+ * Compares dotted versions: -1 if a<b, 0 equal, 1 if a>b.
+ *
+ * Non-numeric tokens are stripped and leftover digits become extra segments,
+ * so `1.0.0-rc.1` is read as 1.0.0.1 and compares **newer** than `1.0.0`.
+ * That fails open: an rc/build of the same numeric version is not forced to
+ * "upgrade" to `minVersion` 1.0.0. This is not semver precedence (semver
+ * would treat `1.0.0-rc.1` as older than `1.0.0`).
+ */
 export function compareVersions(a: string, b: string): number {
   const pa = String(a)
     .split(/[^0-9]+/)
@@ -61,7 +69,6 @@ export type VersionConfig = {
   forceUpdate?: boolean;
   /** @deprecated Prefer per-platform `minVersion`. */
   minimumVersion?: string;
-  latestVersion?: string;
   updateMessage?: string;
   iosStoreUrl?: string;
   androidStoreUrl?: string;
@@ -104,7 +111,8 @@ export function resolvePlatformPolicy(
 
   return {
     minVersion: minFromNested ?? minFromLegacy,
-    latestVersion: pickVersion(nested?.latestVersion) ?? pickVersion(v.latestVersion),
+    // Soft nag is per-platform only. A top-level `version.latestVersion` is ignored.
+    latestVersion: pickVersion(nested?.latestVersion),
     storeUrl:
       pickText(nested?.storeUrl) ??
       pickText(platform === 'android' ? v.androidStoreUrl : v.iosStoreUrl),
@@ -132,11 +140,11 @@ export function fallbackStoreUrl(opts: {
 
 /**
  * Decide which gate (if any) to show. Fail-open: no policy / no comparable
- * versions / unknown platform → `{ kind: 'none' }`. Forced wins over soft
- * when installed is below both thresholds.
+ * versions / unknown installed version / unknown platform → `{ kind: 'none' }`.
+ * Forced wins over soft when installed is below both thresholds.
  */
 export function decideUpdate(opts: {
-  installed: string;
+  installed: string | undefined;
   policy: ResolvedUpdatePolicy;
   appName: string;
   platform: string;
@@ -150,6 +158,8 @@ export function decideUpdate(opts: {
       message: policy.maintenanceMessage || 'We are updating the app. Back shortly.',
     };
   }
+
+  if (!isVersionString(installed)) return { kind: 'none' };
 
   const storeUrl =
     policy.storeUrl || fallbackStoreUrl({ platform, bundleId, appName, iosAppId: policy.iosAppId });

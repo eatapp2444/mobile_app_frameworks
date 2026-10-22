@@ -18,6 +18,12 @@ describe('compareVersions', () => {
     expect(compareVersions('1.2', '1.2.0')).toBe(0);
     expect(compareVersions('1', '1.0.0')).toBe(0);
   });
+
+  it('treats prerelease leftover digits as newer than the numeric version (fails open)', () => {
+    // 1.0.0-rc.1 → [1,0,0,1] vs 1.0.0 → [1,0,0]. Not semver (rc is normally older).
+    expect(compareVersions('1.0.0-rc.1', '1.0.0')).toBe(1);
+    expect(compareVersions('1.0.0', '1.0.0-rc.1')).toBe(-1);
+  });
 });
 
 describe('isVersionString', () => {
@@ -77,6 +83,15 @@ describe('resolvePlatformPolicy', () => {
   it('lets nested minVersion force without a forceUpdate flag', () => {
     const policy = resolvePlatformPolicy({ ios: { minVersion: '4.0.0' } }, 'ios');
     expect(policy.minVersion).toBe('4.0.0');
+  });
+
+  it('does not read a top-level version.latestVersion', () => {
+    const policy = resolvePlatformPolicy(
+      { latestVersion: '9.9.9', ios: { minVersion: '1.0.0' } } as Record<string, unknown>,
+      'ios',
+    );
+    expect(policy.latestVersion).toBeUndefined();
+    expect(policy.minVersion).toBe('1.0.0');
   });
 
   it('returns an empty policy when version is missing (backwards compatible)', () => {
@@ -150,6 +165,26 @@ describe('decideUpdate', () => {
         ...base,
         installed: '3.6.0',
         policy: resolvePlatformPolicy({ ios: { minVersion: '3.0.0', latestVersion: '3.6.0' } }, 'ios'),
+      }).kind,
+    ).toBe('none');
+  });
+
+  it('skips forced and soft gates when the installed version is unknown', () => {
+    expect(
+      decideUpdate({
+        ...base,
+        installed: undefined,
+        policy: resolvePlatformPolicy({ ios: { minVersion: '3.5.0', latestVersion: '3.6.0' } }, 'ios'),
+      }).kind,
+    ).toBe('none');
+  });
+
+  it('does not force a prerelease of the same numeric minVersion (fails open)', () => {
+    expect(
+      decideUpdate({
+        ...base,
+        installed: '1.0.0-rc.1',
+        policy: resolvePlatformPolicy({ ios: { minVersion: '1.0.0' } }, 'ios'),
       }).kind,
     ).toBe('none');
   });

@@ -3,13 +3,18 @@ import { Platform, Text } from 'react-native';
 import renderer, { act } from 'react-test-renderer';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-const installed = { value: '3.0.0' };
+const installed = { value: '3.0.0' as string | null };
 
 jest.mock('expo-application', () => ({
   get nativeApplicationVersion() {
     return installed.value;
   },
   applicationId: 'app.eatapp.demo',
+}));
+
+jest.mock('expo-constants', () => ({
+  nativeAppVersion: undefined,
+  expoConfig: { version: undefined, extra: { EATAPP_BUNDLE_ID: 'app.eatapp.demo' } },
 }));
 
 jest.mock('../inAppUpdates', () => ({
@@ -112,5 +117,59 @@ describe('UpdateGate UI', () => {
     expect(text).toContain('APP_SHELL');
     expect(text).toContain('Update available');
     expect(text).toContain('Not now');
+  });
+
+  it('does not flash the soft nag before AsyncStorage answers', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android' });
+    installed.value = '3.5.0';
+    const AsyncStorage = require('@react-native-async-storage/async-storage') as {
+      getItem: (key: string) => Promise<string | null>;
+    };
+    let resolveNag: ((value: string | null) => void) | undefined;
+    const originalGet = AsyncStorage.getItem.bind(AsyncStorage);
+    const spy = jest.spyOn(AsyncStorage, 'getItem').mockImplementation((key: string) => {
+      if (String(key).includes('update-nag')) {
+        return new Promise((resolve) => {
+          resolveNag = resolve;
+        });
+      }
+      return originalGet(key);
+    });
+
+    let tree: renderer.ReactTestRenderer;
+    await act(async () => {
+      tree = renderer.create(
+        <SafeAreaProvider initialMetrics={safeAreaMetrics}>
+          <ConfigProvider>
+            <UpdateGate>
+              <Text>APP_SHELL</Text>
+            </UpdateGate>
+          </ConfigProvider>
+        </SafeAreaProvider>,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(collectText(tree!.root)).toContain('APP_SHELL');
+    expect(collectText(tree!.root)).not.toContain('Update available');
+
+    await act(async () => {
+      resolveNag?.(null);
+      await Promise.resolve();
+    });
+    expect(collectText(tree!.root)).toContain('Update available');
+    spy.mockRestore();
+  });
+
+  it('skips the gate when the installed version is unknown', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'ios' });
+    installed.value = null;
+    const tree = await renderGate();
+    const text = collectText(tree.root);
+    expect(text).toContain('APP_SHELL');
+    expect(text).not.toContain('Update required');
+    expect(text).not.toContain('Update available');
   });
 });
