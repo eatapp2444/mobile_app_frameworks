@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import type { VersionConfig } from './updatePolicy';
 
 const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, any>;
 
@@ -62,7 +63,12 @@ export type AppConfig = {
   onesignal?: { appId?: string };
   permissions?: Record<string, any>;
   webview?: Record<string, any>;
-  version?: Record<string, any>;
+  /**
+   * Store / update policy. Preferred shape:
+   *   version.ios | version.android = { minVersion, latestVersion, storeUrl, message }
+   * Legacy forceUpdate / minimumVersion keys are still read. Absent fields = no gate.
+   */
+  version?: VersionConfig;
 };
 
 /** Config bundled into the binary at build time by scripts/fetch-config.js. */
