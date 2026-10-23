@@ -43,7 +43,7 @@ export type BlankHome = {
 };
 
 export type AppConfig = {
-  app: { id?: string; name: string; bundleId: string; logo?: string; icon?: string };
+  app: { id?: string; name: string; bundleId: string; logo?: string; icon?: string; domain?: string };
   design?: Record<string, any>;
   theme: Record<string, any>;
   splash?: Record<string, any>;

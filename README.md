@@ -16,9 +16,9 @@ That's it. No local install step exists, so there are no local dependency errors
 
 ## Why installs used to fail
 
-- **No `package-lock.json` is committed** (it's in `.gitignore`). EAS therefore runs
-  `npm install` instead of `npm ci`, so a stale lockfile can never produce
-  `npm error code EUSAGE` / `Missing: … from lock file` again.
+- **`package-lock.json` is committed** so new dependencies stay reproducible.
+  `.npmrc` still sets `legacy-peer-deps=true`. If a lockfile ever goes stale,
+  regenerate it with `npm install` rather than editing it by hand.
 - **`.npmrc` sets `legacy-peer-deps=true`**, which absorbs the OneSignal / expo-font
   peer conflicts that caused `ERESOLVE could not resolve`.
 - Dependency versions are pinned to exactly what Expo SDK 54 expects

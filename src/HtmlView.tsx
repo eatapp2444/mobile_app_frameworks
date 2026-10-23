@@ -1,21 +1,34 @@
 import { useRouter } from 'expo-router';
-import React from 'react';
-import { ActivityIndicator, Linking, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import {
+  ActivityIndicator,
+  Animated,
+  BackHandler,
+  Easing,
+  Linking,
+  Platform,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useConfig, useTheme } from './ConfigProvider';
+import {
+  CMS_HTML_CACHE_MODE,
+  htmlViewNavDecision,
+  htmlViewSourceChanged,
+  resolveHtmlBaseUrl,
+  shouldConsumeAndroidBack,
+} from './htmlViewPolicy';
+import { SCREEN_FADE_DURATION_MS } from './screenTransitions';
 
 const SYSTEM_STACK =
   '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", system-ui, sans-serif';
 
-/**
- * Renders CMS HTML (home sections, page-builder pages) exactly like the
- * dashboard preview: same font stack, same theme tokens.
- */
-export function HtmlView({ html }: { html: string }) {
-  const theme = useTheme();
-  const router = useRouter();
+type ThemeTokens = ReturnType<typeof useTheme>;
 
-  const doc = `<!doctype html><html><head>
+function buildHtmlDocument(html: string, theme: ThemeTokens) {
+  return `<!doctype html><html><head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
 <style>
@@ -36,42 +49,133 @@ export function HtmlView({ html }: { html: string }) {
   iframe { width: 100%; border: 0; }
 </style>
 </head><body>${html}</body></html>`;
-
-  return (
-    <WebView
-      originWhitelist={['*']}
-      source={{ html: doc, baseUrl: '' }}
-      style={[styles.web, { backgroundColor: theme.background }]}
-      javaScriptEnabled
-      domStorageEnabled
-      setSupportMultipleWindows={false}
-      allowsInlineMediaPlayback
-      mediaPlaybackRequiresUserAction={false}
-      onShouldStartLoadWithRequest={(req) => {
-        if (req.url === 'about:blank' || req.url.startsWith('data:') || req.url.startsWith('file:')) return true;
-        // Never let the CMS/API host itself be opened as a page (it requires a login).
-        if (/mobileforge-studio\.lovable\.app/i.test(req.url)) return false;
-        if (/^(tel:|mailto:|sms:)/i.test(req.url)) {
-          Linking.openURL(req.url).catch(() => {});
-          return false;
-        }
-        if (/^https?:\/\//i.test(req.url) && req.isTopFrame !== false) {
-          router.push({ pathname: '/web', params: { url: req.url } });
-          return false;
-        }
-        return true;
-      }}
-    />
-  );
 }
 
+function useAndroidWebViewBack(ref: React.RefObject<WebView | null>, enabled: boolean) {
+  const canGoBack = useRef(false);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android' || !enabled) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!shouldConsumeAndroidBack(canGoBack.current, enabled)) return false;
+      ref.current?.goBack();
+      return true;
+    });
+    return () => sub.remove();
+  }, [enabled, ref]);
+
+  return {
+    onNavigationStateChange: (nav: { canGoBack?: boolean }) => {
+      canGoBack.current = !!nav.canGoBack;
+    },
+  };
+}
+
+/**
+ * Renders CMS HTML (home sections, page-builder pages) exactly like the
+ * dashboard preview: same font stack, same theme tokens.
+ *
+ * The page background stays visible until `onLoadEnd`, then the WebView fades
+ * in. This cover is keep-alive only (stack animation is `none` on tab routes)
+ * so it does not double-fade with overlay screen transitions. `baseUrl` is the
+ * client's https origin so WKWebView/Android can cache images.
+ */
+export const HtmlView = React.memo(function HtmlView({
+  html,
+  active = true,
+}: {
+  html: string;
+  active?: boolean;
+}) {
+  const theme = useTheme();
+  const { config } = useConfig();
+  const router = useRouter();
+  const cover = useRef(new Animated.Value(1)).current;
+  const documentLoaded = useRef(false);
+  const sourceRef = useRef<{ html: string; baseUrl: string } | null>(null);
+  const webRef = useRef<WebView>(null);
+  const androidBack = useAndroidWebViewBack(webRef, active);
+
+  const baseUrl = useMemo(
+    () =>
+      resolveHtmlBaseUrl({
+        webviewUrl: (config?.webview as { url?: string } | undefined)?.url,
+        domain: config?.app?.domain,
+        siteUrl: (config?.app as { website?: string; url?: string } | undefined)?.website,
+      }),
+    [config],
+  );
+  const doc = useMemo(() => buildHtmlDocument(html, theme), [html, theme]);
+  const source = useMemo(() => ({ html: doc, baseUrl }), [doc, baseUrl]);
+
+  // Sync during render: theme / baseUrl / html all rebuild `source` and iOS
+  // will immediately ask for baseUrl. A useEffect reset would run too late.
+  if (htmlViewSourceChanged(sourceRef.current, source)) {
+    documentLoaded.current = false;
+    cover.setValue(1);
+  }
+  sourceRef.current = source;
+
+  const onLoadEnd = useCallback(() => {
+    documentLoaded.current = true;
+    Animated.timing(cover, {
+      toValue: 0,
+      duration: SCREEN_FADE_DURATION_MS,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [cover]);
+
+  return (
+    <View style={[styles.web, { backgroundColor: theme.background }]}>
+      <WebView
+        ref={webRef}
+        originWhitelist={['*']}
+        source={source}
+        style={[styles.web, { backgroundColor: theme.background }]}
+        containerStyle={{ flex: 1, backgroundColor: theme.background }}
+        javaScriptEnabled
+        domStorageEnabled
+        cacheEnabled
+        cacheMode={CMS_HTML_CACHE_MODE}
+        setSupportMultipleWindows={false}
+        allowsInlineMediaPlayback
+        mediaPlaybackRequiresUserAction={false}
+        onLoadEnd={onLoadEnd}
+        onNavigationStateChange={androidBack.onNavigationStateChange}
+        onShouldStartLoadWithRequest={(req) => {
+          const decision = htmlViewNavDecision(req.url, baseUrl, {
+            isTopFrame: req.isTopFrame,
+            navigationType: req.navigationType,
+            documentLoaded: documentLoaded.current,
+          });
+          if (decision === 'allow') return true;
+          if (decision === 'block') return false;
+          if (decision === 'link') {
+            Linking.openURL(req.url).catch(() => {});
+            return false;
+          }
+          router.push({ pathname: '/web', params: { url: req.url } });
+          return false;
+        }}
+      />
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.cover, { backgroundColor: theme.background, opacity: cover }]}
+      />
+    </View>
+  );
+});
+
 /** Full-screen in-app browser used for every external navigation target. */
-export function UrlView({ url }: { url: string }) {
+export function UrlView({ url, active = true }: { url: string; active?: boolean }) {
   const theme = useTheme();
   const { config } = useConfig();
   const wv = (config?.webview ?? {}) as Record<string, any>;
   const [loading, setLoading] = React.useState(true);
   const [failed, setFailed] = React.useState(false);
+  const webRef = useRef<WebView>(null);
+  const androidBack = useAndroidWebViewBack(webRef, active);
 
   const uri = /^https?:\/\//i.test(url) ? url : `https://${url}`;
 
@@ -92,13 +196,18 @@ export function UrlView({ url }: { url: string }) {
   }
 
   return (
-    <View style={styles.web}>
+    <View style={[styles.web, { backgroundColor: theme.background }]}>
       <WebView
+        ref={webRef}
         source={{ uri }}
         originWhitelist={['*']}
         style={[styles.web, { backgroundColor: theme.background }]}
+        containerStyle={{ flex: 1, backgroundColor: theme.background }}
         javaScriptEnabled
         domStorageEnabled
+        cacheEnabled
+        // Intentionally no cacheMode: Android LOAD_CACHE_ELSE_NETWORK would
+        // serve stale Order menus, prices and Account logins.
         thirdPartyCookiesEnabled={wv.cookies !== false}
         sharedCookiesEnabled={wv.cookies !== false}
         pullToRefreshEnabled={wv.pullToRefresh !== false}
@@ -106,11 +215,13 @@ export function UrlView({ url }: { url: string }) {
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
         setSupportMultipleWindows={false}
-        startInLoadingState
+        // Skip the native loading chrome — it paints white. The themed spinner
+        // below is not animated so overlay /web does not double-fade.
         userAgent={
           // Some sites block the default RN WebView UA — present as mobile Safari/Chrome.
           undefined
         }
+        onNavigationStateChange={androidBack.onNavigationStateChange}
         onLoadEnd={() => setLoading(false)}
         onError={() => {
           setLoading(false);
@@ -126,7 +237,7 @@ export function UrlView({ url }: { url: string }) {
         }}
       />
       {loading && (
-        <View style={styles.overlay} pointerEvents="none">
+        <View style={[styles.overlay, { backgroundColor: theme.background }]} pointerEvents="none">
           <ActivityIndicator color={theme.primary} />
         </View>
       )}
@@ -142,5 +253,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
+  },
+  cover: {
+    ...StyleSheet.absoluteFillObject,
   },
 });

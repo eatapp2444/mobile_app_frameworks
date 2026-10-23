@@ -12,7 +12,9 @@
     "ios": "expo run:ios",
     "doctor": "npx expo-doctor",
     "sync-config": "node scripts/fetch-config.js",
-    "eas-build-pre-install": "node scripts/fetch-config.js"
+    "eas-build-pre-install": "node scripts/fetch-config.js",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/*.test.ts"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
@@ -37,6 +39,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
+    "tsx": "^4.20.6",
     "typescript": "~5.9.2"
   }
 }
