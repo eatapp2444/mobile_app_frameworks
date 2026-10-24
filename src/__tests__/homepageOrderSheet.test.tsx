@@ -248,6 +248,24 @@ describe('homepage eatapp://open/order', () => {
     expect(mockRouter.replace).not.toHaveBeenCalled();
   });
 
+  it('does not treat a post-load Android location change as an eatapp tap', async () => {
+    const tree = await renderHome();
+    const web = mockWebViews[mockWebViews.length - 1];
+    await act(async () => {
+      web.props.onLoadEnd?.();
+    });
+    let allowed: boolean | undefined;
+    await act(async () => {
+      allowed = web.props.onShouldStartLoadWithRequest({
+        url: 'eatapp://open/order',
+        isTopFrame: true,
+      });
+    });
+    expect(allowed).toBe(false);
+    expect(collectText(tree.root)).not.toContain('Hahndorf');
+    expect(mockRouter.replace).not.toHaveBeenCalled();
+  });
+
   it('does not double-activate when shouldStartLoad and postMessage both fire', async () => {
     const tree = await renderHome();
     const web = mockWebViews[mockWebViews.length - 1];

@@ -58,6 +58,8 @@ test('stack, overlays, sheets and app-bar title are fade-only (no slide)', () =>
   const tabBar = read('TabBar.tsx');
   assert.match(tabBar, /animationType=\{SHEET_MODAL_ANIMATION\}/);
   assert.doesNotMatch(tabBar, /animationType="slide"/);
+  assert.match(tabBar, /isTabItemActive\(item, routeActive\)/);
+  assert.match(tabBar, /hasGroupFlag\(item\)/);
 
   const appBar = read('AppBar.tsx');
   assert.match(appBar, /duration: SCREEN_FADE_DURATION_MS/);

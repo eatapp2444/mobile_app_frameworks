@@ -53,6 +53,7 @@ function buildHtmlDocument(html: string, theme: ThemeTokens) {
 <script>
 (function () {
   document.addEventListener('click', function (e) {
+    if (!e.isTrusted) return;
     var a = e.target && e.target.closest && e.target.closest('a[href]');
     if (!a) return;
     var href = a.getAttribute('href') || '';

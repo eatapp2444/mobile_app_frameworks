@@ -68,7 +68,8 @@ test('iOS initial load of baseUrl is allowed; later homepage taps go to /web; CM
   assert.equal(htmlViewNavDecision('eatapp://open/order', base, { navigationType: 'click' }), 'app');
   assert.equal(htmlViewNavDecision('eatapp://open/tab/venues', base, { navigationType: 'click' }), 'app');
   assert.equal(htmlViewNavDecision('eatapp://open/tab/Venues', base, { navigationType: 'click' }), 'app');
-  assert.equal(htmlViewNavDecision('eatapp://open/tab/order?x=1', base, { documentLoaded: true }), 'app');
+  assert.equal(htmlViewNavDecision('eatapp://open/tab/order?x=1', base, { navigationType: 'click' }), 'app');
+  assert.equal(htmlViewNavDecision('eatapp://open/order', base, { documentLoaded: true }), 'block');
   assert.equal(
     htmlViewNavDecision('eatapp://open/order', base, { documentLoaded: true, navigationType: 'other' }),
     'block',
@@ -79,7 +80,7 @@ test('iOS initial load of baseUrl is allowed; later homepage taps go to /web; CM
   assert.equal(htmlViewNavDecision('eatapp://open/tab/', base), 'block');
   assert.equal(isHtmlViewUserTap({}), false);
   assert.equal(isHtmlViewUserTap({ navigationType: 'click' }), true);
-  assert.equal(isHtmlViewUserTap({ documentLoaded: true }), true);
+  assert.equal(isHtmlViewUserTap({ documentLoaded: true }), false);
   assert.equal(isHtmlViewUserTap({ documentLoaded: true, navigationType: 'other' }), false);
   assert.equal(isHtmlViewUserTap({ navigationType: 'click', isTopFrame: false }), false);
   assert.equal(isHtmlViewDocumentUrl('https://localhost/', 'https://localhost/'), true);
@@ -113,6 +114,7 @@ test('HtmlView intercepts eatapp:// as app actions and never pushes /web for the
   assert.match(htmlView, /shouldAcceptAppLink/);
   assert.match(htmlView, /payload\?\.type === 'eatapp'/);
   assert.match(htmlView, /href.slice\(0, 7\).toLowerCase\(\) !== 'eatapp:'/);
+  assert.match(htmlView, /if \(!e\.isTrusted\) return;/);
   const appBranch = htmlView.slice(htmlView.indexOf("decision === 'app'"), htmlView.indexOf("decision === 'link'"));
   assert.doesNotMatch(appBranch, /router\.push/);
   assert.doesNotMatch(appBranch, /Linking\.openURL/);

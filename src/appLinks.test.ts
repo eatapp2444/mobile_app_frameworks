@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   findNavTab,
+  hasGroupFlag,
   isAppLink,
   isGroupNavItem,
+  isTabItemActive,
   moreNavItem,
   normalizeTabName,
   parseAppLink,
@@ -122,6 +124,31 @@ test('children without isGroup/action:group are not a sheet (tab still opens its
   };
   assert.equal(isGroupNavItem(menu), false);
   assert.equal(sheetFromNavItem(menu), null);
+});
+
+test('isActive follows any children, flag or not; chevron is flag-only even if empty', () => {
+  const sub: NavItem = { id: 'sub', label: 'Sub', route: '/sub' };
+  const menu: NavItem = {
+    id: 'menu',
+    label: 'Menu',
+    url: 'https://example.com/menu',
+    children: [sub],
+  };
+  const paged: NavItem = {
+    id: 'page',
+    label: 'Page',
+    route: '/p',
+    submenu: { items: [sub] },
+  };
+  const emptyGroup: NavItem = { id: 'order', label: 'Order', isGroup: true, action: 'group' };
+  const onSub = (item: NavItem) => item.route === '/sub';
+  const onMenuUrl = (item: NavItem) => item.url === 'https://example.com/menu';
+  assert.equal(isTabItemActive(menu, onSub), true);
+  assert.equal(isTabItemActive(paged, onSub), true);
+  assert.equal(isTabItemActive(menu, onMenuUrl), false);
+  assert.equal(hasGroupFlag(emptyGroup), true);
+  assert.equal(isGroupNavItem(emptyGroup), false);
+  assert.equal(hasGroupFlag(menu), false);
 });
 
 test('duplicate eatapp activations within the dedup window are ignored', () => {

@@ -3,7 +3,14 @@ import { useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { findNavTab, isGroupNavItem, moreNavItem, sheetFromNavItem, type NavSheet } from './appLinks';
+import {
+  findNavTab,
+  hasGroupFlag,
+  isTabItemActive,
+  moreNavItem,
+  sheetFromNavItem,
+  type NavSheet,
+} from './appLinks';
 import { NavItem } from './config';
 import { useConfig, useTheme } from './ConfigProvider';
 import { ion } from './icons';
@@ -66,14 +73,11 @@ export function TabBar() {
     return target === '/' ? pathname === '/' || pathname === '/index' : pathname.endsWith(target);
   };
 
-  const isActive = (item: NavItem) => {
-    if (isGroupNavItem(item)) return sheetFromNavItem(item)!.items.some(routeActive);
-    return routeActive(item);
-  };
+  const isActive = (item: NavItem) => isTabItemActive(item, routeActive);
 
   const cell = (item: NavItem, key: string) => {
     const active = isActive(item);
-    const group = isGroupNavItem(item);
+    const group = hasGroupFlag(item);
     return (
       <Pressable key={key} style={styles.tab} onPress={() => go(item)}>
         <Ionicons name={ion(item.icon)} size={22} color={active ? theme.tabActive : theme.tabInactive} />

@@ -82,13 +82,28 @@ export function navItemChildren(item: NavItem | null | undefined): NavItem[] {
   return item.children ?? item.submenu?.items ?? [];
 }
 
+/** CMS group flag only — empty groups still show the tab-bar chevron. */
+export function hasGroupFlag(item: NavItem | null | undefined): boolean {
+  return !!item && !!(item.isGroup || item.action === 'group');
+}
+
 /**
  * Tab-bar groups (Order, Venues, More). Requires the CMS flag — a tab that
  * merely has `children` (e.g. Menu with a Sub link) is not a group: tapping it
  * still opens its URL, and it keeps its own keep-alive pane.
  */
 export function isGroupNavItem(item: NavItem | null | undefined): boolean {
-  return !!item && !!(item.isGroup || item.action === 'group') && navItemChildren(item).length > 0;
+  return hasGroupFlag(item) && navItemChildren(item).length > 0;
+}
+
+/**
+ * Highlight a tab when it, or any of its children, is the current route.
+ * Children count even without isGroup (main-branch behaviour).
+ */
+export function isTabItemActive(item: NavItem, routeActive: (child: NavItem) => boolean): boolean {
+  const children = navItemChildren(item);
+  if (children.length) return children.some(routeActive);
+  return routeActive(item);
 }
 
 /** Same payload TabBar uses when a group tab (Order / Venues / More) is tapped. */

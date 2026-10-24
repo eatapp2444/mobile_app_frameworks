@@ -92,15 +92,14 @@ export type HtmlViewNavOpts = {
 };
 
 /**
- * eatapp:// must not run from a script `location` on load.
- * iOS: `navigationType === 'click'` (or formsubmit). `other` is JS.
- * Android: navigationType is usually omitted, so a post-load top-frame request counts.
+ * eatapp:// must not run from a script `location` (load or post-load).
+ * Only a real user gesture: iOS `navigationType` click/formsubmit.
+ * Android omits navigationType on location changes — those stay blocked;
+ * trusted click `postMessage` is the Android activation path.
  */
 export function isHtmlViewUserTap(opts: HtmlViewNavOpts = {}): boolean {
   if (opts.isTopFrame === false) return false;
-  if (opts.navigationType === 'click' || opts.navigationType === 'formsubmit') return true;
-  if (opts.navigationType === 'other') return false;
-  return !!opts.documentLoaded;
+  return opts.navigationType === 'click' || opts.navigationType === 'formsubmit';
 }
 
 export function htmlViewNavDecision(
