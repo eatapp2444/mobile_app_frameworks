@@ -47,6 +47,7 @@ test('iOS honours 200ms; Android fade XML is 150ms and ignores animationDuration
 });
 
 test('stack, overlays, sheets and app-bar title are fade-only (no slide)', () => {
+  assert.match(layout, /TabActionsProvider/);
   assert.match(layout, /animation: SCREEN_FADE_ANIMATION/);
   assert.match(layout, /animationDuration: SCREEN_FADE_DURATION_MS/);
   assert.match(layout, /ThemeProvider/);

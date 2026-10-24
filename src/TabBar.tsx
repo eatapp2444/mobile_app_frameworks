@@ -1,13 +1,15 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { findNavTab, isGroupNavItem, moreNavItem, sheetFromNavItem, type NavSheet } from './appLinks';
 import { NavItem } from './config';
 import { useConfig, useTheme } from './ConfigProvider';
 import { ion } from './icons';
 import { firstParam, isCmsHost, isExternalUrl, openNavTarget } from './nav';
 import { SCREEN_FADE_DURATION_MS, SHEET_MODAL_ANIMATION } from './screenTransitions';
+import { useTabActions } from './TabActions';
 
 export function TabBar() {
   const { config } = useConfig();
@@ -17,27 +19,44 @@ export function TabBar() {
   const params = useGlobalSearchParams<{ url?: string | string[] }>();
   const webUrl = firstParam(params.url);
   const insets = useSafeAreaInsets();
-  const [sheet, setSheet] = useState<{ title: string; items: NavItem[] } | null>(null);
+  const { registerActivateTab } = useTabActions();
+  const [sheet, setSheet] = useState<NavSheet | null>(null);
 
   const nav = config?.navigation ?? {};
   const all = (nav.items ?? []).filter(Boolean);
-  if (!all.length) return null;
-
   const maxVisible = Math.max(2, Math.min(Number(nav.maxVisible ?? 4), 5));
   const visible = all.slice(0, maxVisible);
   const overflow = all.slice(maxVisible);
+  const more = moreNavItem(overflow, nav.moreLabel ?? 'More', nav.moreIcon ?? 'MoreHorizontal');
 
   const go = (item: NavItem) => {
-    const isGroup = item.isGroup || item.action === 'group';
-    const children = item.children ?? item.submenu?.items ?? [];
-    if (isGroup && children.length) {
-      setSheet({ title: item.submenu?.title ?? item.label, items: children });
+    const next = sheetFromNavItem(item);
+    if (next) {
+      setSheet(next);
       return;
     }
     // Tabs replace the current screen (single instance, no stacking) and a tap
     // on the already-active tab does nothing.
     openNavTarget(router, item, { current: pathname, replace: true });
   };
+
+  const goRef = useRef(go);
+  goRef.current = go;
+  const catalogRef = useRef<NavItem[]>(all);
+  catalogRef.current = more ? [...all, more] : all;
+
+  useEffect(
+    () =>
+      registerActivateTab((name) => {
+        const item = findNavTab(catalogRef.current, name);
+        if (!item) return false;
+        goRef.current(item);
+        return true;
+      }),
+    [registerActivateTab],
+  );
+
+  if (!all.length) return null;
 
   const routeActive = (item: NavItem) => {
     const target = String(item.url || item.route || '/');
@@ -48,14 +67,13 @@ export function TabBar() {
   };
 
   const isActive = (item: NavItem) => {
-    const children = item.children ?? item.submenu?.items ?? [];
-    if (children.length) return children.some(routeActive);
+    if (isGroupNavItem(item)) return sheetFromNavItem(item)!.items.some(routeActive);
     return routeActive(item);
   };
 
   const cell = (item: NavItem, key: string) => {
     const active = isActive(item);
-    const group = item.isGroup || item.action === 'group';
+    const group = isGroupNavItem(item);
     return (
       <Pressable key={key} style={styles.tab} onPress={() => go(item)}>
         <Ionicons name={ion(item.icon)} size={22} color={active ? theme.tabActive : theme.tabInactive} />
@@ -86,17 +104,7 @@ export function TabBar() {
         ]}
       >
         {visible.map((item, i) => cell(item, item.id ?? String(i)))}
-        {overflow.length > 0 &&
-          cell(
-            {
-              id: '__more',
-              label: nav.moreLabel ?? 'More',
-              icon: nav.moreIcon ?? 'MoreHorizontal',
-              isGroup: true,
-              children: overflow,
-            },
-            '__more',
-          )}
+        {more ? cell(more, '__more') : null}
       </View>
 
       <Modal visible={!!sheet} transparent animationType={SHEET_MODAL_ANIMATION} onRequestClose={() => setSheet(null)}>
@@ -105,7 +113,9 @@ export function TabBar() {
           style={[styles.sheet, { backgroundColor: theme.card, paddingBottom: Math.max(insets.bottom, 16) }]}
         >
           <View style={[styles.grabber, { backgroundColor: theme.border }]} />
-          <Text style={[styles.sheetTitle, { color: theme.text }]}>{sheet?.title}</Text>
+          <Text testID="nav-sheet-title" style={[styles.sheetTitle, { color: theme.text }]}>
+            {sheet?.title}
+          </Text>
           <ScrollView>
             {(sheet?.items ?? []).map((child, i) => (
               <Pressable

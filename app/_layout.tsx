@@ -10,6 +10,7 @@ import { AppBar } from '../src/AppBar';
 import { ConfigProvider, useConfig, useTheme } from '../src/ConfigProvider';
 import { TabKeepAlive } from '../src/TabKeepAlive';
 import { TabBar } from '../src/TabBar';
+import { TabActionsProvider } from '../src/TabActions';
 import { UpdateGate } from '../src/UpdateGate';
 import { SplashOverlay } from '../src/SplashOverlay';
 import { firstParam } from '../src/navCore';
@@ -153,10 +154,12 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ConfigProvider>
-        <UpdateGate>
-          <Shell />
-        </UpdateGate>
-        <SplashOverlay />
+        <TabActionsProvider>
+          <UpdateGate>
+            <Shell />
+          </UpdateGate>
+          <SplashOverlay />
+        </TabActionsProvider>
       </ConfigProvider>
     </SafeAreaProvider>
   );
