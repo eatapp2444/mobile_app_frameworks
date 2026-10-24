@@ -10,6 +10,7 @@ import {
   htmlViewNavDecision,
   htmlViewSourceChanged,
   isHtmlViewDocumentUrl,
+  isHtmlViewUserTap,
   resolveHtmlBaseUrl,
   shouldConsumeAndroidBack,
 } from './htmlViewPolicy';
@@ -63,6 +64,25 @@ test('iOS initial load of baseUrl is allowed; later homepage taps go to /web; CM
   assert.equal(htmlViewNavDecision('https://www.youtube.com/embed/abc', base), 'web');
   assert.equal(htmlViewNavDecision('https://mobileforge-studio.lovable.app/api', base), 'block');
   assert.equal(htmlViewNavDecision('tel:0733431144', base), 'link');
+  assert.equal(htmlViewNavDecision('eatapp://open/order', base), 'block');
+  assert.equal(htmlViewNavDecision('eatapp://open/order', base, { navigationType: 'click' }), 'app');
+  assert.equal(htmlViewNavDecision('eatapp://open/tab/venues', base, { navigationType: 'click' }), 'app');
+  assert.equal(htmlViewNavDecision('eatapp://open/tab/Venues', base, { navigationType: 'click' }), 'app');
+  assert.equal(htmlViewNavDecision('eatapp://open/tab/order?x=1', base, { navigationType: 'click' }), 'app');
+  assert.equal(htmlViewNavDecision('eatapp://open/order', base, { documentLoaded: true }), 'block');
+  assert.equal(
+    htmlViewNavDecision('eatapp://open/order', base, { documentLoaded: true, navigationType: 'other' }),
+    'block',
+  );
+  assert.equal(htmlViewNavDecision('eatapp://open/venues', base, { navigationType: 'click' }), 'block');
+  assert.equal(htmlViewNavDecision('eatapp://launch/nuke', base, { navigationType: 'click' }), 'block');
+  assert.equal(htmlViewNavDecision('eatapp://open', base), 'block');
+  assert.equal(htmlViewNavDecision('eatapp://open/tab/', base), 'block');
+  assert.equal(isHtmlViewUserTap({}), false);
+  assert.equal(isHtmlViewUserTap({ navigationType: 'click' }), true);
+  assert.equal(isHtmlViewUserTap({ documentLoaded: true }), false);
+  assert.equal(isHtmlViewUserTap({ documentLoaded: true, navigationType: 'other' }), false);
+  assert.equal(isHtmlViewUserTap({ navigationType: 'click', isTopFrame: false }), false);
   assert.equal(isHtmlViewDocumentUrl('https://localhost/', 'https://localhost/'), true);
   assert.equal(htmlViewNavDecision('https://localhost/', 'https://localhost/'), 'allow');
   assert.equal(htmlViewNavDecision('https://localhost/', 'https://localhost/', { documentLoaded: true }), 'web');
@@ -84,6 +104,22 @@ test('theme or baseUrl source rebuilds reset documentLoaded so iOS reload is all
   assert.match(src, /htmlViewSourceChanged\(sourceRef\.current, source\)/);
   assert.match(src, /documentLoaded\.current = false/);
   assert.doesNotMatch(src, /htmlRef\.current === html/);
+});
+
+test('HtmlView intercepts eatapp:// as app actions and never pushes /web for them', () => {
+  const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'HtmlView.tsx'), 'utf8');
+  const htmlView = src.slice(0, src.indexOf('export function UrlView'));
+  assert.match(htmlView, /decision === 'app'/);
+  assert.match(htmlView, /runAppLink\(req\.url\)/);
+  assert.match(htmlView, /shouldAcceptAppLink/);
+  assert.match(htmlView, /payload\?\.type === 'eatapp'/);
+  assert.match(htmlView, /href.slice\(0, 7\).toLowerCase\(\) !== 'eatapp:'/);
+  assert.match(htmlView, /if \(!e\.isTrusted\) return;/);
+  const appBranch = htmlView.slice(htmlView.indexOf("decision === 'app'"), htmlView.indexOf("decision === 'link'"));
+  assert.doesNotMatch(appBranch, /router\.push/);
+  assert.doesNotMatch(appBranch, /Linking\.openURL/);
+  const urlView = src.slice(src.indexOf('export function UrlView'));
+  assert.doesNotMatch(urlView, /eatapp:/);
 });
 
 test('Android hardware back is consumed only when the WebView can go back and is active', () => {

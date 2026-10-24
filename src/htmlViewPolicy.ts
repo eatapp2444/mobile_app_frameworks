@@ -1,3 +1,5 @@
+import { isAppLink, parseAppLink } from './appLinks';
+
 /**
  * Policy for CMS HtmlView (static page-builder HTML), not live Order/Account UrlViews.
  *
@@ -79,7 +81,7 @@ export function htmlViewSourceChanged(prev: HtmlViewSource | null, next: HtmlVie
   return prev.html !== next.html || prev.baseUrl !== next.baseUrl;
 }
 
-export type HtmlViewNavDecision = 'allow' | 'block' | 'link' | 'web';
+export type HtmlViewNavDecision = 'allow' | 'block' | 'link' | 'web' | 'app';
 
 export type HtmlViewNavOpts = {
   isTopFrame?: boolean;
@@ -89,12 +91,29 @@ export type HtmlViewNavOpts = {
   documentLoaded?: boolean;
 };
 
+/**
+ * eatapp:// must not run from a script `location` (load or post-load).
+ * Only a real user gesture: iOS `navigationType` click/formsubmit.
+ * Android omits navigationType on location changes — those stay blocked;
+ * trusted click `postMessage` is the Android activation path.
+ */
+export function isHtmlViewUserTap(opts: HtmlViewNavOpts = {}): boolean {
+  if (opts.isTopFrame === false) return false;
+  return opts.navigationType === 'click' || opts.navigationType === 'formsubmit';
+}
+
 export function htmlViewNavDecision(
   url: string,
   baseUrl: string,
   opts: HtmlViewNavOpts = {},
 ): HtmlViewNavDecision {
   if (!url || url === 'about:blank' || url.startsWith('data:') || url.startsWith('file:')) return 'allow';
+  // Custom in-app actions (eatapp://open/tab/<name>, eatapp://open/order).
+  // Unknown / non-tap requests are blocked so the WebView never loads them.
+  if (isAppLink(url)) {
+    if (parseAppLink(url).type === 'ignore' || !isHtmlViewUserTap(opts)) return 'block';
+    return 'app';
+  }
   if (/^(tel:|mailto:|sms:)/i.test(url)) return 'link';
   if (/mobileforge-studio\.lovable\.app/i.test(url) && !isHtmlViewDocumentUrl(url, baseUrl)) return 'block';
   if (isHtmlViewDocumentUrl(url, baseUrl)) {

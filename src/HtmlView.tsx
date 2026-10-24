@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { parseAppLink, shouldAcceptAppLink } from './appLinks';
 import { useConfig, useTheme } from './ConfigProvider';
 import {
   CMS_HTML_CACHE_MODE,
@@ -21,6 +22,7 @@ import {
   shouldConsumeAndroidBack,
 } from './htmlViewPolicy';
 import { SCREEN_FADE_DURATION_MS } from './screenTransitions';
+import { useTabActions } from './TabActions';
 
 const SYSTEM_STACK =
   '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", system-ui, sans-serif';
@@ -48,6 +50,22 @@ function buildHtmlDocument(html: string, theme: ThemeTokens) {
   a { color: var(--primary); }
   iframe { width: 100%; border: 0; }
 </style>
+<script>
+(function () {
+  document.addEventListener('click', function (e) {
+    if (!e.isTrusted) return;
+    var a = e.target && e.target.closest && e.target.closest('a[href]');
+    if (!a) return;
+    var href = a.getAttribute('href') || '';
+    if (href.slice(0, 7).toLowerCase() !== 'eatapp:') return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'eatapp', url: href }));
+    }
+  }, true);
+})();
+</script>
 </head><body>${html}</body></html>`;
 }
 
@@ -90,7 +108,21 @@ export const HtmlView = React.memo(function HtmlView({
   const theme = useTheme();
   const { config } = useConfig();
   const router = useRouter();
+  const { activateTab } = useTabActions();
   const cover = useRef(new Animated.Value(1)).current;
+  const lastAppLink = useRef<{ url: string; at: number } | null>(null);
+
+  const runAppLink = useCallback(
+    (url: string) => {
+      const action = parseAppLink(url);
+      if (action.type !== 'open-tab') return;
+      const now = Date.now();
+      if (!shouldAcceptAppLink(lastAppLink.current, url, now)) return;
+      lastAppLink.current = { url, at: now };
+      activateTab(action.name);
+    },
+    [activateTab],
+  );
   const documentLoaded = useRef(false);
   const sourceRef = useRef<{ html: string; baseUrl: string } | null>(null);
   const webRef = useRef<WebView>(null);
@@ -143,6 +175,14 @@ export const HtmlView = React.memo(function HtmlView({
         mediaPlaybackRequiresUserAction={false}
         onLoadEnd={onLoadEnd}
         onNavigationStateChange={androidBack.onNavigationStateChange}
+        onMessage={(event) => {
+          try {
+            const payload = JSON.parse(event.nativeEvent.data);
+            if (payload?.type === 'eatapp' && typeof payload.url === 'string') runAppLink(payload.url);
+          } catch {
+            /* builder pages may postMessage unrelated strings */
+          }
+        }}
         onShouldStartLoadWithRequest={(req) => {
           const decision = htmlViewNavDecision(req.url, baseUrl, {
             isTopFrame: req.isTopFrame,
@@ -151,6 +191,10 @@ export const HtmlView = React.memo(function HtmlView({
           });
           if (decision === 'allow') return true;
           if (decision === 'block') return false;
+          if (decision === 'app') {
+            runAppLink(req.url);
+            return false;
+          }
           if (decision === 'link') {
             Linking.openURL(req.url).catch(() => {});
             return false;

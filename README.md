@@ -215,6 +215,66 @@ If an app ever needs photo access, complete Play Console -> Policy -> App
 content -> **Photo and Video Permissions** *and* stop blocking the matching
 permission in `app.config.js` — do not rely on the CMS toggle alone.
 
+## Homepage HTML — opening native tabs and submenus
+
+Builder-supplied Home HTML (and other CMS pages rendered by `HtmlView`) can
+open the same native tabs and group sheets as the tab bar. Links are
+intercepted inside the WebView — the same path as `tel:` / `mailto:` / `https`.
+The page does **not** navigate away, so there is no white flash.
+
+This is **generic**: any tab can be a submenu (Order, Venues, More, …). The
+framework does not special-case Order except as a short alias.
+
+| href | Behaviour |
+| --- | --- |
+| `eatapp://open/tab/<name>` | Same as tapping that tab. If the tab is a **group** (`isGroup` / `action: "group"` with sub-items), its sheet opens (e.g. Venues → Hahndorf / Murray Bridge / Mount Barker). If it is not a group, that tab is selected. `<name>` matches the tab **id** or **label**, case-insensitive (`Venues`, `venues`, `about-us`). Query strings and hashes are ignored (`eatapp://open/tab/order?x=1`). |
+| `eatapp://open/order` | The **only** short alias — same as `eatapp://open/tab/order`. `eatapp://open/venues` is ignored; use `eatapp://open/tab/venues`. |
+| any other `eatapp://…` | Ignored. The WebView does not load the URL. Unknown tab names are also no-ops. |
+
+Example for the homepage HTML:
+
+```html
+<a href="eatapp://open/order">Order now</a>
+<a href="eatapp://open/tab/venues">Our venues</a>
+```
+
+Apps that never use these hrefs are unchanged. Do not use `https://…` if you
+want a native **sheet** — that still opens the in-app browser (`/web`).
+
+### Builder config: a submenu on any tab
+
+The tab bar already treats **every** `navigation.items[]` entry the same. Order
+is not a unique type. To make Venues (or any tab) a multi-venue submenu, send
+the same group shape Order already uses:
+
+```json
+{
+  "id": "venues",
+  "label": "Venues",
+  "icon": "MapPin",
+  "isGroup": true,
+  "action": "group",
+  "submenu": {
+    "title": "Venues",
+    "items": [
+      { "id": "hahndorf", "label": "Hahndorf", "route": "/hahndorf" },
+      { "id": "murray-bridge", "label": "Murray Bridge", "route": "/murray-bridge" },
+      { "id": "mount-barker", "label": "Mount Barker", "route": "/mount-barker" }
+    ]
+  }
+}
+```
+
+Equivalent: put the rows on `children` instead of `submenu.items`. The tab bar
+opens a sheet only when **`isGroup` or `action: "group"`** is set **and** that
+list is non-empty — the same rule Order already uses. A tab that has extra
+`children` but is not flagged as a group still opens its own `url`/`route` and
+keeps its own pane. Child `route` values are normal page slugs (`/hahndorf`) or
+`https://…` Order URLs.
+
+A tab with no group flag (or an empty submenu) stays a single destination (tap
+or `eatapp://open/tab/<name>` just switches to it).
+
 ## v22 — no header jump + screen animation
 
 - The home screen and every stacked screen (page / web view / notifications)

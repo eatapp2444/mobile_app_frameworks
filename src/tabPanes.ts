@@ -1,3 +1,4 @@
+import { isGroupNavItem, navItemChildren } from './appLinks';
 import type { AppConfig, NavItem } from './config';
 import { isCmsHost, isExternalUrl } from './navCore';
 
@@ -15,15 +16,14 @@ export type TabPane =
   | { key: `page:${string}`; kind: 'page'; slug: string; eager: boolean }
   | { key: `web:${string}`; kind: 'web'; url: string; title?: string; eager: boolean };
 
-/** Flatten groups / Order-style submenus so each real destination is a pane. */
+/** Flatten group tabs (Order, Venues, More, …) so each real destination is a pane. */
 export function collectNavDestinations(items?: NavItem[] | null): NavItem[] {
   const out: NavItem[] = [];
   const walk = (list?: NavItem[]) => {
     for (const item of list ?? []) {
       if (!item) continue;
-      const children = item.children ?? item.submenu?.items ?? [];
-      const isGroup = item.isGroup || item.action === 'group';
-      if (isGroup && children.length) {
+      const children = navItemChildren(item);
+      if (isGroupNavItem(item)) {
         walk(children);
         continue;
       }

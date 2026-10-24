@@ -19,7 +19,9 @@ export type NavItem = {
   route?: string | null;
   url?: string | null;
   action?: string;
+  /** Builder group tab (Order, Venues, More). Equivalent to `action: 'group'`. */
   isGroup?: boolean;
+  /** Submenu rows when this item is a group (`isGroup` / `action: 'group'`). Same as `submenu.items`. */
   children?: NavItem[];
   submenu?: { title?: string; items?: NavItem[] };
 };
