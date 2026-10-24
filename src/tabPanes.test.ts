@@ -92,21 +92,26 @@ test('Order submenu children are panes; the group itself is not', () => {
   assert.ok(panes.some((p) => p.key === 'web:https://order.example/ribs'));
 });
 
-test('submenu children without isGroup still flatten (builder may omit the flag)', () => {
+test('a tab with children but no group flag keeps its pane and still walks children', () => {
   const items: NavItem[] = [
     {
-      id: 'venues',
-      label: 'Venues',
-      children: [
-        { id: 'hahndorf', label: 'Hahndorf', route: '/hahndorf' },
-        { id: 'murray-bridge', label: 'Murray Bridge', route: '/murray-bridge' },
-      ],
+      id: 'menu',
+      label: 'Menu',
+      url: 'https://example.com/menu',
+      children: [{ id: 'sub', label: 'Sub', route: '/sub' }],
     },
   ];
   assert.deepEqual(
     collectNavDestinations(items).map((d) => d.label),
-    ['Hahndorf', 'Murray Bridge'],
+    ['Menu', 'Sub'],
   );
+  const panes = panesFromConfig({
+    app: { name: 'x', bundleId: 'x' },
+    theme: {},
+    navigation: { items },
+  } as AppConfig);
+  assert.ok(panes.some((p) => p.key === 'web:https://example.com/menu'));
+  assert.ok(panes.some((p) => p.key === 'page:sub'));
 });
 
 test('Venues submenu is the same group shape as Order; the group itself is not a pane', () => {

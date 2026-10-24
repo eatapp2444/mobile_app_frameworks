@@ -14,9 +14,11 @@ export function isAppLink(url: string): boolean {
 /**
  * Parse builder homepage links.
  *
- *   eatapp://open/tab/<name>     → same as tapping that tab (sheet if it has sub-items)
- *   eatapp://open/order          → convenience alias for eatapp://open/tab/order
+ *   eatapp://open/tab/<name>     → same as tapping that tab (sheet if it is a group)
+ *   eatapp://open/order          → the only short alias (same as eatapp://open/tab/order)
  *   anything else eatapp://…     → ignore
+ *
+ * `?query` and `#hash` are stripped so `eatapp://open/tab/order?x=1` still works.
  */
 export function parseAppLink(url: string): AppLinkAction {
   const raw = String(url ?? '').trim();
@@ -24,6 +26,8 @@ export function parseAppLink(url: string): AppLinkAction {
   if (!match) return { type: 'ignore' };
 
   let rest = match[1];
+  const cut = rest.search(/[?#]/);
+  if (cut >= 0) rest = rest.slice(0, cut);
   try {
     rest = decodeURIComponent(rest);
   } catch {
@@ -31,7 +35,7 @@ export function parseAppLink(url: string): AppLinkAction {
   }
 
   const parts = rest
-    .split(/[/?#]/)
+    .split('/')
     .map((part) => part.trim())
     .filter(Boolean);
   if (parts[0]?.toLowerCase() !== 'open' || parts.length < 2) return { type: 'ignore' };
@@ -42,8 +46,25 @@ export function parseAppLink(url: string): AppLinkAction {
     return { type: 'open-tab', name };
   }
 
-  const name = parts.slice(1).join('/');
-  return name ? { type: 'open-tab', name } : { type: 'ignore' };
+  // Short alias is Order only. Venues / About / … must use open/tab/<name>.
+  if (parts.length === 2 && parts[1].toLowerCase() === 'order') {
+    return { type: 'open-tab', name: parts[1] };
+  }
+  return { type: 'ignore' };
+}
+
+/** Ignore a duplicate eatapp:// activation (Android click + shouldStartLoad). */
+export const APP_LINK_DEDUP_MS = 400;
+
+export function shouldAcceptAppLink(
+  prev: { url: string; at: number } | null,
+  url: string,
+  now: number,
+  windowMs = APP_LINK_DEDUP_MS,
+): boolean {
+  if (!prev) return true;
+  if (prev.url !== url) return true;
+  return now - prev.at >= windowMs;
 }
 
 /** "About us" / "about_us" / "About-Us" → "about-us" */
@@ -62,13 +83,12 @@ export function navItemChildren(item: NavItem | null | undefined): NavItem[] {
 }
 
 /**
- * Any tab with sub-items opens a sheet (Order, Venues, More, …).
- * `isGroup` / `action: 'group'` are the CMS flags; children alone is enough so a
- * builder submenu still works if those flags are omitted.
+ * Tab-bar groups (Order, Venues, More). Requires the CMS flag — a tab that
+ * merely has `children` (e.g. Menu with a Sub link) is not a group: tapping it
+ * still opens its URL, and it keeps its own keep-alive pane.
  */
 export function isGroupNavItem(item: NavItem | null | undefined): boolean {
-  if (!item) return false;
-  return navItemChildren(item).length > 0;
+  return !!item && !!(item.isGroup || item.action === 'group') && navItemChildren(item).length > 0;
 }
 
 /** Same payload TabBar uses when a group tab (Order / Venues / More) is tapped. */

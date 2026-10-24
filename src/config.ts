@@ -21,7 +21,7 @@ export type NavItem = {
   action?: string;
   /** Builder group tab (Order, Venues, More). Equivalent to `action: 'group'`. */
   isGroup?: boolean;
-  /** Submenu rows. Same as `submenu.items` — either is enough to open the sheet. */
+  /** Submenu rows when this item is a group (`isGroup` / `action: 'group'`). Same as `submenu.items`. */
   children?: NavItem[];
   submenu?: { title?: string; items?: NavItem[] };
 };

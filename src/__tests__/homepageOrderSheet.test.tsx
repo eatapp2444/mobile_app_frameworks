@@ -233,4 +233,31 @@ describe('homepage eatapp://open/order', () => {
       params: { slug: 'about-us' },
     });
   });
+
+  it('strips query strings and ignores the open/<name> alias except order', async () => {
+    const tree = await renderHome();
+    await act(async () => {
+      expect(fireHtmlLink('eatapp://open/tab/venues?x=1')).toBe(false);
+    });
+    expect(collectText(tree.root.findByProps({ testID: 'nav-sheet-title' }))).toBe('Venues');
+    expect(mockRouter.replace).not.toHaveBeenCalled();
+
+    await act(async () => {
+      expect(fireHtmlLink('eatapp://open/venues')).toBe(false);
+    });
+    expect(mockRouter.replace).not.toHaveBeenCalled();
+  });
+
+  it('does not double-activate when shouldStartLoad and postMessage both fire', async () => {
+    const tree = await renderHome();
+    const web = mockWebViews[mockWebViews.length - 1];
+    await act(async () => {
+      fireHtmlLink('eatapp://open/tab/about-us');
+      web.props.onMessage({
+        nativeEvent: { data: JSON.stringify({ type: 'eatapp', url: 'eatapp://open/tab/about-us' }) },
+      });
+    });
+    expect(mockRouter.replace).toHaveBeenCalledTimes(1);
+    expect(collectText(tree.root)).not.toContain('Hahndorf');
+  });
 });

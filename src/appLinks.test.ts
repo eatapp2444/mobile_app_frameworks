@@ -8,6 +8,7 @@ import {
   normalizeTabName,
   parseAppLink,
   sheetFromNavItem,
+  shouldAcceptAppLink,
 } from './appLinks';
 import type { NavItem } from './config';
 
@@ -51,9 +52,12 @@ test('parseAppLink understands open/order and open/tab/<name>', () => {
   assert.deepEqual(parseAppLink('EATAPP://OPEN/ORDER'), { type: 'open-tab', name: 'ORDER' });
   assert.deepEqual(parseAppLink('eatapp:///open/order'), { type: 'open-tab', name: 'order' });
   assert.deepEqual(parseAppLink('eatapp:open/order'), { type: 'open-tab', name: 'order' });
+  assert.deepEqual(parseAppLink('eatapp://open/order?x=1'), { type: 'open-tab', name: 'order' });
   assert.deepEqual(parseAppLink('eatapp://open/tab/venues'), { type: 'open-tab', name: 'venues' });
   assert.deepEqual(parseAppLink('eatapp://open/tab/Venues'), { type: 'open-tab', name: 'Venues' });
   assert.deepEqual(parseAppLink('eatapp://open/tab/about-us'), { type: 'open-tab', name: 'about-us' });
+  assert.deepEqual(parseAppLink('eatapp://open/tab/order?x=1'), { type: 'open-tab', name: 'order' });
+  assert.deepEqual(parseAppLink('eatapp://open/tab/venues#sheet'), { type: 'open-tab', name: 'venues' });
   assert.deepEqual(parseAppLink('eatapp://open/tab/Murray%20Bridge'), {
     type: 'open-tab',
     name: 'Murray Bridge',
@@ -66,6 +70,8 @@ test('unknown eatapp actions and non-app URLs are ignored', () => {
   assert.deepEqual(parseAppLink('eatapp://open/'), { type: 'ignore' });
   assert.deepEqual(parseAppLink('eatapp://open/tab'), { type: 'ignore' });
   assert.deepEqual(parseAppLink('eatapp://open/tab/'), { type: 'ignore' });
+  assert.deepEqual(parseAppLink('eatapp://open/venues'), { type: 'ignore' });
+  assert.deepEqual(parseAppLink('eatapp://open/about-us'), { type: 'ignore' });
   assert.deepEqual(parseAppLink('eatapp://'), { type: 'ignore' });
   assert.deepEqual(parseAppLink('https://example.com/order'), { type: 'ignore' });
   assert.deepEqual(parseAppLink('tel:0733431144'), { type: 'ignore' });
@@ -107,21 +113,23 @@ test('findNavTab matches id or label; sheetFromNavItem matches a tab tap', () =>
   assert.equal(sheetFromNavItem(findNavTab(fenwickNav, 'about-us')), null);
 });
 
-test('submenu children without isGroup still open a sheet (any tab, not only Order)', () => {
-  const venuesOnly: NavItem[] = [
-    {
-      id: 'venues',
-      label: 'Venues',
-      children: [
-        { id: 'h', label: 'Hahndorf', route: '/hahndorf' },
-        { id: 'm', label: 'Murray Bridge', route: '/murray-bridge' },
-      ],
-    },
-  ];
-  assert.equal(isGroupNavItem(venuesOnly[0]), true);
-  const sheet = sheetFromNavItem(findNavTab(venuesOnly, 'venues'));
-  assert.equal(sheet?.title, 'Venues');
-  assert.equal(sheet?.items.length, 2);
+test('children without isGroup/action:group are not a sheet (tab still opens its URL)', () => {
+  const menu: NavItem = {
+    id: 'menu',
+    label: 'Menu',
+    url: 'https://example.com/menu',
+    children: [{ id: 'sub', label: 'Sub', route: '/sub' }],
+  };
+  assert.equal(isGroupNavItem(menu), false);
+  assert.equal(sheetFromNavItem(menu), null);
+});
+
+test('duplicate eatapp activations within the dedup window are ignored', () => {
+  const url = 'eatapp://open/order';
+  assert.equal(shouldAcceptAppLink(null, url, 1000), true);
+  assert.equal(shouldAcceptAppLink({ url, at: 1000 }, url, 1100), false);
+  assert.equal(shouldAcceptAppLink({ url, at: 1000 }, url, 1500), true);
+  assert.equal(shouldAcceptAppLink({ url, at: 1000 }, 'eatapp://open/tab/venues', 1100), true);
 });
 
 test('More overflow is addressable as eatapp://open/tab/more', () => {

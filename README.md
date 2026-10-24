@@ -227,8 +227,8 @@ framework does not special-case Order except as a short alias.
 
 | href | Behaviour |
 | --- | --- |
-| `eatapp://open/tab/<name>` | Same as tapping that tab. If the tab has sub-items, its sheet opens (e.g. Venues → Hahndorf / Murray Bridge / Mount Barker). If it has no sub-items, that tab is selected. `<name>` matches the tab **id** or **label**, case-insensitive (`Venues`, `venues`, `about-us`). |
-| `eatapp://open/order` | Convenience alias for `eatapp://open/tab/order`. |
+| `eatapp://open/tab/<name>` | Same as tapping that tab. If the tab is a **group** (`isGroup` / `action: "group"` with sub-items), its sheet opens (e.g. Venues → Hahndorf / Murray Bridge / Mount Barker). If it is not a group, that tab is selected. `<name>` matches the tab **id** or **label**, case-insensitive (`Venues`, `venues`, `about-us`). Query strings and hashes are ignored (`eatapp://open/tab/order?x=1`). |
+| `eatapp://open/order` | The **only** short alias — same as `eatapp://open/tab/order`. `eatapp://open/venues` is ignored; use `eatapp://open/tab/venues`. |
 | any other `eatapp://…` | Ignored. The WebView does not load the URL. Unknown tab names are also no-ops. |
 
 Example for the homepage HTML:
@@ -265,13 +265,15 @@ the same group shape Order already uses:
 }
 ```
 
-Equivalent: put the rows on `children` instead of `submenu.items`. Either list
-is enough to open the sheet — `isGroup` / `action: "group"` are the CMS flags
-the dashboard already emits for Order. Child `route` values are normal page
-slugs (`/hahndorf`) or `https://…` Order URLs.
+Equivalent: put the rows on `children` instead of `submenu.items`. The tab bar
+opens a sheet only when **`isGroup` or `action: "group"`** is set **and** that
+list is non-empty — the same rule Order already uses. A tab that has extra
+`children` but is not flagged as a group still opens its own `url`/`route` and
+keeps its own pane. Child `route` values are normal page slugs (`/hahndorf`) or
+`https://…` Order URLs.
 
-A tab with no `children` / `submenu.items` stays a single destination (tap or
-`eatapp://open/tab/<name>` just switches to it).
+A tab with no group flag (or an empty submenu) stays a single destination (tap
+or `eatapp://open/tab/<name>` just switches to it).
 
 ## v22 — no header jump + screen animation
 

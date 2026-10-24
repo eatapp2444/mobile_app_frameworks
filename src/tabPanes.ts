@@ -28,6 +28,7 @@ export function collectNavDestinations(items?: NavItem[] | null): NavItem[] {
         continue;
       }
       out.push(item);
+      if (children.length) walk(children);
     }
   };
   walk(items ?? []);

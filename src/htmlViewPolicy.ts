@@ -91,6 +91,18 @@ export type HtmlViewNavOpts = {
   documentLoaded?: boolean;
 };
 
+/**
+ * eatapp:// must not run from a script `location` on load.
+ * iOS: `navigationType === 'click'` (or formsubmit). `other` is JS.
+ * Android: navigationType is usually omitted, so a post-load top-frame request counts.
+ */
+export function isHtmlViewUserTap(opts: HtmlViewNavOpts = {}): boolean {
+  if (opts.isTopFrame === false) return false;
+  if (opts.navigationType === 'click' || opts.navigationType === 'formsubmit') return true;
+  if (opts.navigationType === 'other') return false;
+  return !!opts.documentLoaded;
+}
+
 export function htmlViewNavDecision(
   url: string,
   baseUrl: string,
@@ -98,8 +110,11 @@ export function htmlViewNavDecision(
 ): HtmlViewNavDecision {
   if (!url || url === 'about:blank' || url.startsWith('data:') || url.startsWith('file:')) return 'allow';
   // Custom in-app actions (eatapp://open/tab/<name>, eatapp://open/order).
-  // Unknown shapes are blocked so the WebView never loads them (white flash).
-  if (isAppLink(url)) return parseAppLink(url).type === 'ignore' ? 'block' : 'app';
+  // Unknown / non-tap requests are blocked so the WebView never loads them.
+  if (isAppLink(url)) {
+    if (parseAppLink(url).type === 'ignore' || !isHtmlViewUserTap(opts)) return 'block';
+    return 'app';
+  }
   if (/^(tel:|mailto:|sms:)/i.test(url)) return 'link';
   if (/mobileforge-studio\.lovable\.app/i.test(url) && !isHtmlViewDocumentUrl(url, baseUrl)) return 'block';
   if (isHtmlViewDocumentUrl(url, baseUrl)) {
