@@ -6,6 +6,9 @@ name: iOS compile
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   compile:
     name: xcodebuild simulator

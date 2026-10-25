@@ -80,16 +80,10 @@ test('SceneDelegate forwards ExpoAppDelegate active/background subscribers', () 
   assert.match(patched, /appDelegate\.applicationWillEnterForeground\(UIApplication\.shared\)/);
 });
 
-test('AppDelegate configurationForConnecting names SceneDelegate and Default Configuration', () => {
+test('Info.plist names SceneDelegate; AppDelegate does not implement configurationForConnecting', () => {
   const patched = patchAppDelegate(loadSdk54AppDelegate());
-  assert.match(
-    patched,
-    /public func application\(\n    _ application: UIApplication,\n    configurationForConnecting connectingSceneSession: UISceneSession[\s\S]*UISceneConfiguration\(\n\s*name: "Default Configuration",\n\s*sessionRole: connectingSceneSession\.role\n\s*\)[\s\S]*configuration\.delegateClass = SceneDelegate\.self/,
-  );
-  assert.doesNotMatch(
-    patched,
-    /override func application\(\n    _ application: UIApplication,\n    configurationForConnecting/,
-  );
+  assert.equal(patched.includes('configurationForConnecting'), false);
+  assert.doesNotMatch(patched, /delegateClass = SceneDelegate/);
   assert.equal(SCENE_MANIFEST.UISceneConfigurations.UIWindowSceneSessionRoleApplication[0].UISceneConfigurationName, 'Default Configuration');
   assert.equal(
     SCENE_MANIFEST.UISceneConfigurations.UIWindowSceneSessionRoleApplication[0].UISceneDelegateClassName,
@@ -195,6 +189,7 @@ test('Expo 54 ExpoAppDelegate lifecycle methods are open; configurationForConnec
 test('ios-compile workflow is manual-trigger only and unsigned simulator xcodebuild', () => {
   const src = fs.readFileSync(path.join(__dirname, '../.github/workflows/ios-compile.yml'), 'utf8');
   assert.match(src, /^on:\n  workflow_dispatch:\n/m);
+  assert.match(src, /^permissions:\n  contents: read\n/m);
   assert.doesNotMatch(src, /\bpull_request\b/);
   assert.doesNotMatch(src, /\bpush:\b/);
   assert.match(src, /runs-on: macos-15/);

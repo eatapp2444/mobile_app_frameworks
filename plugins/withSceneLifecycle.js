@@ -21,7 +21,9 @@
  * applicationDidEnterBackground. ExpoAppDelegate subscribers still listen on
  * those AppDelegate methods (expo/ios/AppDelegates/ExpoAppDelegate.swift), so
  * SceneDelegate forwards sceneDidBecomeActive / sceneDidEnterBackground (and
- * resign/foreground) through AppDelegate, matching expo/expo#49925.
+ * resign/foreground) through AppDelegate, matching expo/expo#49925. The
+ * Info.plist UIApplicationSceneManifest already names SceneDelegate, so
+ * AppDelegate does not implement configurationForConnecting.
  *
  * A nil reactNativeFactory is a contract violation (didFinishLaunching always
  * assigns it before the first scene connects). Lazily creating the factory
@@ -44,30 +46,6 @@ const WINDOW_BLOCK =
 
 const WINDOW_REPLACEMENT =
   '    // Window and React Native start in SceneDelegate (UIKit scene lifecycle).\n';
-
-const LINKING_ANCHOR =
-  '  // Linking API\n' +
-  '  public override func application(\n' +
-  '    _ app: UIApplication,\n' +
-  '    open url: URL,\n';
-
-// Expo 54's ExpoAppDelegate does not declare configurationForConnecting
-// (TODO only; see expo/ios/AppDelegates/ExpoAppDelegate.swift). `override`
-// would fail xcodebuild. AppDelegate implements the optional UIKit method.
-const SCENE_CONFIG_METHOD =
-  '  public func application(\n' +
-  '    _ application: UIApplication,\n' +
-  '    configurationForConnecting connectingSceneSession: UISceneSession,\n' +
-  '    options: UIScene.ConnectionOptions\n' +
-  '  ) -> UISceneConfiguration {\n' +
-  '    let configuration = UISceneConfiguration(\n' +
-  '      name: "Default Configuration",\n' +
-  '      sessionRole: connectingSceneSession.role\n' +
-  '    )\n' +
-  '    configuration.delegateClass = SceneDelegate.self\n' +
-  '    return configuration\n' +
-  '  }\n' +
-  '\n';
 
 const SCENE_DELEGATE = `
 ${MARKER}
@@ -188,16 +166,7 @@ function patchAppDelegate(contents) {
   if (!next.includes(WINDOW_BLOCK)) {
     throw missingBlockError(next);
   }
-  if (!next.includes(LINKING_ANCHOR)) {
-    throw new Error(
-      'withSceneLifecycle: Expo SDK 54 AppDelegate linking handlers were not found. ' +
-        'Cannot insert application(_:configurationForConnecting:options:).',
-    );
-  }
-  return (
-    next.replace(WINDOW_BLOCK, WINDOW_REPLACEMENT).replace(LINKING_ANCHOR, SCENE_CONFIG_METHOD + LINKING_ANCHOR) +
-    SCENE_DELEGATE
-  );
+  return next.replace(WINDOW_BLOCK, WINDOW_REPLACEMENT) + SCENE_DELEGATE;
 }
 
 function applySceneManifest(plist) {
@@ -229,4 +198,3 @@ module.exports.applySceneManifest = applySceneManifest;
 module.exports.WINDOW_BLOCK = WINDOW_BLOCK;
 module.exports.MARKER = MARKER;
 module.exports.SCENE_MANIFEST = SCENE_MANIFEST;
-module.exports.LINKING_ANCHOR = LINKING_ANCHOR;

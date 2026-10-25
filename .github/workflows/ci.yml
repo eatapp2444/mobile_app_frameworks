@@ -59,5 +59,9 @@ jobs:
           grep -F 'applicationDidBecomeActive' "$APP_DELEGATE"
           grep -F 'sceneDidEnterBackground' "$APP_DELEGATE"
           grep -F 'applicationDidEnterBackground' "$APP_DELEGATE"
-          grep -F 'configurationForConnecting' "$APP_DELEGATE"
+          grep -F 'Default Configuration' "$INFO_PLIST"
+          if grep -F 'configurationForConnecting' "$APP_DELEGATE"; then
+            echo "AppDelegate must not implement configurationForConnecting; Info.plist names SceneDelegate"
+            exit 1
+          fi
           grep -F 'preconditionFailure("withSceneLifecycle: reactNativeFactory is nil")' "$APP_DELEGATE"
