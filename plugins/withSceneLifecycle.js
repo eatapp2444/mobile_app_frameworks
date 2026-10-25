@@ -16,10 +16,23 @@
  * expo-linking, expo-router, and RCTLinkingManager keep working. OneSignal is
  * initialised from JS after RN starts and uses a Notification Service
  * Extension — this plugin does not edit those.
+ *
+ * Scene lifecycle also stops UIKit calling applicationDidBecomeActive /
+ * applicationDidEnterBackground. ExpoAppDelegate subscribers still listen on
+ * those AppDelegate methods (expo/ios/AppDelegates/ExpoAppDelegate.swift), so
+ * SceneDelegate forwards sceneDidBecomeActive / sceneDidEnterBackground (and
+ * resign/foreground) through AppDelegate, matching expo/expo#49925.
+ *
+ * A nil reactNativeFactory is a contract violation (didFinishLaunching always
+ * assigns it before the first scene connects). Lazily creating the factory
+ * here would duplicate ExpoReactNativeFactory / RCTAppDependencyProvider /
+ * bindReactNativeFactory and can start RN twice. We NSLog + assertionFailure
+ * instead of returning into a black screen.
  */
 const MARKER = '// scene lifecycle (withSceneLifecycle.js)';
 
-// Exact block from Expo SDK 54.0.37's generated AppDelegate.swift.
+// Exact block from Expo SDK 54.0.37's generated AppDelegate.swift
+// (captured by `npx expo prebuild --platform ios --clean --no-install`).
 const WINDOW_BLOCK =
   '#if os(iOS) || os(tvOS)\n' +
   '    window = UIWindow(frame: UIScreen.main.bounds)\n' +
@@ -32,6 +45,27 @@ const WINDOW_BLOCK =
 const WINDOW_REPLACEMENT =
   '    // Window and React Native start in SceneDelegate (UIKit scene lifecycle).\n';
 
+const LINKING_ANCHOR =
+  '  // Linking API\n' +
+  '  public override func application(\n' +
+  '    _ app: UIApplication,\n' +
+  '    open url: URL,\n';
+
+const SCENE_CONFIG_METHOD =
+  '  public override func application(\n' +
+  '    _ application: UIApplication,\n' +
+  '    configurationForConnecting connectingSceneSession: UISceneSession,\n' +
+  '    options: UIScene.ConnectionOptions\n' +
+  '  ) -> UISceneConfiguration {\n' +
+  '    let configuration = UISceneConfiguration(\n' +
+  '      name: "Default Configuration",\n' +
+  '      sessionRole: connectingSceneSession.role\n' +
+  '    )\n' +
+  '    configuration.delegateClass = SceneDelegate.self\n' +
+  '    return configuration\n' +
+  '  }\n' +
+  '\n';
+
 const SCENE_DELEGATE = `
 ${MARKER}
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
@@ -42,11 +76,21 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     willConnectTo session: UISceneSession,
     options connectionOptions: UIScene.ConnectionOptions
   ) {
-    guard
-      let windowScene = scene as? UIWindowScene,
-      let appDelegate = UIApplication.shared.delegate as? AppDelegate,
-      let factory = appDelegate.reactNativeFactory
-    else { return }
+    guard let windowScene = scene as? UIWindowScene else {
+      NSLog("withSceneLifecycle: connecting scene is not a UIWindowScene (%@)", String(describing: type(of: scene)))
+      assertionFailure("withSceneLifecycle: expected UIWindowScene")
+      return
+    }
+    guard let appDelegate = UIApplication.shared.delegate as? AppDelegate else {
+      NSLog("withSceneLifecycle: UIApplication.shared.delegate is not AppDelegate (%@)", String(describing: UIApplication.shared.delegate))
+      assertionFailure("withSceneLifecycle: expected AppDelegate")
+      return
+    }
+    guard let factory = appDelegate.reactNativeFactory else {
+      NSLog("withSceneLifecycle: AppDelegate.reactNativeFactory is nil; didFinishLaunchingWithOptions did not finish React Native setup. Refusing to show a blank window.")
+      assertionFailure("withSceneLifecycle: reactNativeFactory is nil")
+      return
+    }
 
     // Cold-start links arrive here, not in AppDelegate launchOptions.
     // Forward them through AppDelegate before RN starts so expo-linking
@@ -73,6 +117,26 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
       withModuleName: "main",
       in: window,
       launchOptions: launchOptions.isEmpty ? nil : launchOptions)
+  }
+
+  func sceneDidBecomeActive(_ scene: UIScene) {
+    guard let appDelegate = UIApplication.shared.delegate as? AppDelegate else { return }
+    appDelegate.applicationDidBecomeActive(UIApplication.shared)
+  }
+
+  func sceneWillResignActive(_ scene: UIScene) {
+    guard let appDelegate = UIApplication.shared.delegate as? AppDelegate else { return }
+    appDelegate.applicationWillResignActive(UIApplication.shared)
+  }
+
+  func sceneWillEnterForeground(_ scene: UIScene) {
+    guard let appDelegate = UIApplication.shared.delegate as? AppDelegate else { return }
+    appDelegate.applicationWillEnterForeground(UIApplication.shared)
+  }
+
+  func sceneDidEnterBackground(_ scene: UIScene) {
+    guard let appDelegate = UIApplication.shared.delegate as? AppDelegate else { return }
+    appDelegate.applicationDidEnterBackground(UIApplication.shared)
   }
 
   func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
@@ -122,7 +186,16 @@ function patchAppDelegate(contents) {
   if (!next.includes(WINDOW_BLOCK)) {
     throw missingBlockError(next);
   }
-  return next.replace(WINDOW_BLOCK, WINDOW_REPLACEMENT) + SCENE_DELEGATE;
+  if (!next.includes(LINKING_ANCHOR)) {
+    throw new Error(
+      'withSceneLifecycle: Expo SDK 54 AppDelegate linking handlers were not found. ' +
+        'Cannot insert application(_:configurationForConnecting:options:).',
+    );
+  }
+  return (
+    next.replace(WINDOW_BLOCK, WINDOW_REPLACEMENT).replace(LINKING_ANCHOR, SCENE_CONFIG_METHOD + LINKING_ANCHOR) +
+    SCENE_DELEGATE
+  );
 }
 
 function applySceneManifest(plist) {
@@ -154,3 +227,4 @@ module.exports.applySceneManifest = applySceneManifest;
 module.exports.WINDOW_BLOCK = WINDOW_BLOCK;
 module.exports.MARKER = MARKER;
 module.exports.SCENE_MANIFEST = SCENE_MANIFEST;
+module.exports.LINKING_ANCHOR = LINKING_ANCHOR;

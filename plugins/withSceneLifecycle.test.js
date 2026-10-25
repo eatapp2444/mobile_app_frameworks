@@ -10,94 +10,24 @@ const {
   patchAppDelegate,
 } = require('./withSceneLifecycle');
 
-const EXPO_54_APP_DELEGATE = `import Expo
-import React
-import ReactAppDependencyProvider
+const FIXTURE = path.join(__dirname, '__fixtures__/sdk54-AppDelegate.swift');
 
-@UIApplicationMain
-public class AppDelegate: ExpoAppDelegate {
-  var window: UIWindow?
-
-  var reactNativeDelegate: ExpoReactNativeFactoryDelegate?
-  var reactNativeFactory: RCTReactNativeFactory?
-
-  public override func application(
-    _ application: UIApplication,
-    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
-  ) -> Bool {
-    let delegate = ReactNativeDelegate()
-    let factory = ExpoReactNativeFactory(delegate: delegate)
-    delegate.dependencyProvider = RCTAppDependencyProvider()
-
-    reactNativeDelegate = delegate
-    reactNativeFactory = factory
-    bindReactNativeFactory(factory)
-
-#if os(iOS) || os(tvOS)
-    window = UIWindow(frame: UIScreen.main.bounds)
-    factory.startReactNative(
-      withModuleName: "main",
-      in: window,
-      launchOptions: launchOptions)
-#endif
-
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-  }
-
-  // Linking API
-  public override func application(
-    _ app: UIApplication,
-    open url: URL,
-    options: [UIApplication.OpenURLOptionsKey: Any] = [:]
-  ) -> Bool {
-    return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)
-  }
-
-  // Universal Links
-  public override func application(
-    _ application: UIApplication,
-    continue userActivity: NSUserActivity,
-    restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
-  ) -> Bool {
-    let result = RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)
-    return super.application(application, continue: userActivity, restorationHandler: restorationHandler) || result
-  }
+function loadSdk54AppDelegate() {
+  return fs.readFileSync(FIXTURE, 'utf8').replace(/\r\n/g, '\n');
 }
 
-class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
-  // Extension point for config-plugins
-
-  override func sourceURL(for bridge: RCTBridge) -> URL? {
-    // needed to return the correct URL for expo-dev-client.
-    bridge.bundleURL ?? bundleURL()
-  }
-
-  override func bundleURL() -> URL? {
-#if DEBUG
-    return RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: ".expo/.virtual-metro-entry")
-#else
-    return Bundle.main.url(forResource: "main", withExtension: "jsbundle")
-#endif
-  }
-}
-`;
-
-test('WINDOW_BLOCK is the Expo 54.0.37 generated template text', () => {
-  assert.equal(
-    WINDOW_BLOCK,
-    '#if os(iOS) || os(tvOS)\n' +
-      '    window = UIWindow(frame: UIScreen.main.bounds)\n' +
-      '    factory.startReactNative(\n' +
-      '      withModuleName: "main",\n' +
-      '      in: window,\n' +
-      '      launchOptions: launchOptions)\n' +
-      '#endif\n',
-  );
-  assert.ok(EXPO_54_APP_DELEGATE.includes(WINDOW_BLOCK));
+test('fixture is real Expo 54 prebuild output containing the window block', () => {
+  const src = loadSdk54AppDelegate();
+  assert.match(src, /Captured from: npx expo prebuild --platform ios --clean --no-install/);
+  assert.match(src, /expo@54\.0\.37/);
+  assert.ok(src.includes(WINDOW_BLOCK), 'prebuild fixture must contain the Expo 54 window block');
+  assert.match(src, /@UIApplicationMain/);
+  assert.match(src, /bindReactNativeFactory\(factory\)/);
+  assert.match(src, /RCTLinkingManager\.application\(app, open: url, options: options\)/);
 });
 
 test('patchAppDelegate moves the window onto SceneDelegate and keeps linking', () => {
-  const patched = patchAppDelegate(EXPO_54_APP_DELEGATE);
+  const patched = patchAppDelegate(loadSdk54AppDelegate());
 
   assert.ok(patched.includes(MARKER));
   assert.ok(patched.includes('class SceneDelegate: UIResponder, UIWindowSceneDelegate'));
@@ -122,8 +52,48 @@ test('patchAppDelegate moves the window onto SceneDelegate and keeps linking', (
   );
 });
 
+test('nil reactNativeFactory logs and assertionFailure instead of a silent black screen', () => {
+  const patched = patchAppDelegate(loadSdk54AppDelegate());
+  assert.match(
+    patched,
+    /guard let factory = appDelegate\.reactNativeFactory else \{\n[\s\S]*NSLog\("withSceneLifecycle: AppDelegate\.reactNativeFactory is nil/,
+  );
+  assert.match(patched, /assertionFailure\("withSceneLifecycle: reactNativeFactory is nil"\)/);
+  assert.doesNotMatch(
+    patched,
+    /let windowScene = scene as\? UIWindowScene,\n\s*let appDelegate = UIApplication\.shared\.delegate as\? AppDelegate,\n\s*let factory = appDelegate\.reactNativeFactory\n\s*else \{ return \}/,
+  );
+});
+
+test('SceneDelegate forwards ExpoAppDelegate active/background subscribers', () => {
+  const patched = patchAppDelegate(loadSdk54AppDelegate());
+  assert.match(
+    patched,
+    /func sceneDidBecomeActive\(_ scene: UIScene\) \{\n\s*guard let appDelegate = UIApplication\.shared\.delegate as\? AppDelegate else \{ return \}\n\s*appDelegate\.applicationDidBecomeActive\(UIApplication\.shared\)/,
+  );
+  assert.match(
+    patched,
+    /func sceneDidEnterBackground\(_ scene: UIScene\) \{\n\s*guard let appDelegate = UIApplication\.shared\.delegate as\? AppDelegate else \{ return \}\n\s*appDelegate\.applicationDidEnterBackground\(UIApplication\.shared\)/,
+  );
+  assert.match(patched, /appDelegate\.applicationWillResignActive\(UIApplication\.shared\)/);
+  assert.match(patched, /appDelegate\.applicationWillEnterForeground\(UIApplication\.shared\)/);
+});
+
+test('AppDelegate configurationForConnecting names SceneDelegate and Default Configuration', () => {
+  const patched = patchAppDelegate(loadSdk54AppDelegate());
+  assert.match(
+    patched,
+    /configurationForConnecting connectingSceneSession: UISceneSession[\s\S]*UISceneConfiguration\(\n\s*name: "Default Configuration",\n\s*sessionRole: connectingSceneSession\.role\n\s*\)[\s\S]*configuration\.delegateClass = SceneDelegate\.self/,
+  );
+  assert.equal(SCENE_MANIFEST.UISceneConfigurations.UIWindowSceneSessionRoleApplication[0].UISceneConfigurationName, 'Default Configuration');
+  assert.equal(
+    SCENE_MANIFEST.UISceneConfigurations.UIWindowSceneSessionRoleApplication[0].UISceneDelegateClassName,
+    '$(PRODUCT_MODULE_NAME).SceneDelegate',
+  );
+});
+
 test('patchAppDelegate is idempotent once the marker is present', () => {
-  const once = patchAppDelegate(EXPO_54_APP_DELEGATE);
+  const once = patchAppDelegate(loadSdk54AppDelegate());
   const twice = patchAppDelegate(once);
   assert.equal(twice, once);
   assert.equal(once.split(MARKER).length - 1, 1);
@@ -137,7 +107,7 @@ test('patchAppDelegate fails loudly when the Expo 54 window block is missing', (
   assert.throws(
     () =>
       patchAppDelegate(
-        EXPO_54_APP_DELEGATE.replace(
+        loadSdk54AppDelegate().replace(
           'window = UIWindow(frame: UIScreen.main.bounds)',
           'window = UIWindow(windowScene: scene)',
         ),
