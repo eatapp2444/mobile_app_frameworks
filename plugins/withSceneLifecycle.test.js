@@ -52,13 +52,14 @@ test('patchAppDelegate moves the window onto SceneDelegate and keeps linking', (
   );
 });
 
-test('nil reactNativeFactory logs and assertionFailure instead of a silent black screen', () => {
+test('nil reactNativeFactory logs and preconditionFailure instead of a silent black screen', () => {
   const patched = patchAppDelegate(loadSdk54AppDelegate());
   assert.match(
     patched,
     /guard let factory = appDelegate\.reactNativeFactory else \{\n[\s\S]*NSLog\("withSceneLifecycle: AppDelegate\.reactNativeFactory is nil/,
   );
-  assert.match(patched, /assertionFailure\("withSceneLifecycle: reactNativeFactory is nil"\)/);
+  assert.match(patched, /preconditionFailure\("withSceneLifecycle: reactNativeFactory is nil"\)/);
+  assert.doesNotMatch(patched, /assertionFailure\("withSceneLifecycle: reactNativeFactory is nil"\)/);
   assert.doesNotMatch(
     patched,
     /let windowScene = scene as\? UIWindowScene,\n\s*let appDelegate = UIApplication\.shared\.delegate as\? AppDelegate,\n\s*let factory = appDelegate\.reactNativeFactory\n\s*else \{ return \}/,
@@ -83,7 +84,11 @@ test('AppDelegate configurationForConnecting names SceneDelegate and Default Con
   const patched = patchAppDelegate(loadSdk54AppDelegate());
   assert.match(
     patched,
-    /configurationForConnecting connectingSceneSession: UISceneSession[\s\S]*UISceneConfiguration\(\n\s*name: "Default Configuration",\n\s*sessionRole: connectingSceneSession\.role\n\s*\)[\s\S]*configuration\.delegateClass = SceneDelegate\.self/,
+    /public func application\(\n    _ application: UIApplication,\n    configurationForConnecting connectingSceneSession: UISceneSession[\s\S]*UISceneConfiguration\(\n\s*name: "Default Configuration",\n\s*sessionRole: connectingSceneSession\.role\n\s*\)[\s\S]*configuration\.delegateClass = SceneDelegate\.self/,
+  );
+  assert.doesNotMatch(
+    patched,
+    /override func application\(\n    _ application: UIApplication,\n    configurationForConnecting/,
   );
   assert.equal(SCENE_MANIFEST.UISceneConfigurations.UIWindowSceneSessionRoleApplication[0].UISceneConfigurationName, 'Default Configuration');
   assert.equal(
@@ -133,4 +138,71 @@ test('app.config.js registers withSceneLifecycle next to the pod floor', () => {
     src,
     /withIosPodDeploymentTarget[\s\S]*plugins\.push\('\.\/plugins\/withSceneLifecycle'\)/,
   );
+});
+
+function packageRoot(name) {
+  return path.dirname(require.resolve(`${name}/package.json`));
+}
+
+function readLines(filePath) {
+  return fs.readFileSync(filePath, 'utf8').replace(/\r\n/g, '\n').split('\n');
+}
+
+function findLine(lines, pattern) {
+  const index = lines.findIndex((line) => pattern.test(line));
+  assert.ok(index >= 0, `expected ${pattern} in source`);
+  return index + 1;
+}
+
+test('Expo 54 ExpoAppDelegate lifecycle methods are open; configurationForConnecting is not declared', () => {
+  const expoRoot = packageRoot('expo');
+  const coreRoot = packageRoot('expo-modules-core');
+  const expoVersion = require(path.join(expoRoot, 'package.json')).version;
+  const coreVersion = require(path.join(coreRoot, 'package.json')).version;
+  assert.match(expoVersion, /^54\./);
+  assert.match(coreVersion, /^3\./);
+
+  const delegatePath = path.join(expoRoot, 'ios/AppDelegates/ExpoAppDelegate.swift');
+  const managerPath = path.join(coreRoot, 'ios/AppDelegates/ExpoAppDelegateSubscriberManager.swift');
+  assert.equal(fs.existsSync(path.join(coreRoot, 'ios/AppDelegates/ExpoAppDelegate.swift')), false);
+
+  const delegate = readLines(delegatePath);
+  const manager = readLines(managerPath);
+
+  assert.match(delegate[13], /open class ExpoAppDelegate: UIResponder,.+UIApplicationDelegate/);
+  assert.equal(
+    delegate.findIndex((line) => line.includes('configurationForConnecting')),
+    -1,
+    'Expo 54 ExpoAppDelegate must not declare configurationForConnecting (override would fail xcodebuild)',
+  );
+  assert.match(delegate[94], /TODO: - Configuring and Discarding Scenes/);
+
+  assert.match(delegate[102], /open func applicationDidBecomeActive\(_ application: UIApplication\)/);
+  assert.match(delegate[107], /open func applicationWillResignActive\(_ application: UIApplication\)/);
+  assert.match(delegate[112], /open func applicationDidEnterBackground\(_ application: UIApplication\)/);
+  assert.match(delegate[116], /open func applicationWillEnterForeground\(_ application: UIApplication\)/);
+
+  findLine(manager, /public static func applicationDidBecomeActive\(_ application: UIApplication\)/);
+  findLine(manager, /public static func applicationWillResignActive\(_ application: UIApplication\)/);
+  findLine(manager, /public static func applicationDidEnterBackground\(_ application: UIApplication\)/);
+  findLine(manager, /public static func applicationWillEnterForeground\(_ application: UIApplication\)/);
+  assert.equal(
+    manager.findIndex((line) => line.includes('configurationForConnecting')),
+    -1,
+  );
+});
+
+test('ios-compile workflow is manual-trigger only and unsigned simulator xcodebuild', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../.github/workflows/ios-compile.yml'), 'utf8');
+  assert.match(src, /^on:\n  workflow_dispatch:\n/m);
+  assert.doesNotMatch(src, /\bpull_request\b/);
+  assert.doesNotMatch(src, /\bpush:\b/);
+  assert.match(src, /runs-on: macos-15/);
+  assert.match(src, /Xcode_26\*\.app/);
+  assert.match(src, /Xcode 26\\\./);
+  assert.match(src, /npx expo prebuild --platform ios --clean --no-install/);
+  assert.match(src, /EATAPP_BUNDLE_ID: com\.jaihoindia/);
+  assert.match(src, /pod install/);
+  assert.match(src, /CODE_SIGNING_ALLOWED=NO/);
+  assert.match(src, /iphonesimulator/);
 });

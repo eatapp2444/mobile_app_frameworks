@@ -26,8 +26,8 @@
  * A nil reactNativeFactory is a contract violation (didFinishLaunching always
  * assigns it before the first scene connects). Lazily creating the factory
  * here would duplicate ExpoReactNativeFactory / RCTAppDependencyProvider /
- * bindReactNativeFactory and can start RN twice. We NSLog + assertionFailure
- * instead of returning into a black screen.
+ * bindReactNativeFactory and can start RN twice. We NSLog + preconditionFailure
+ * so Release builds crash with that name instead of showing a blank window.
  */
 const MARKER = '// scene lifecycle (withSceneLifecycle.js)';
 
@@ -51,8 +51,11 @@ const LINKING_ANCHOR =
   '    _ app: UIApplication,\n' +
   '    open url: URL,\n';
 
+// Expo 54's ExpoAppDelegate does not declare configurationForConnecting
+// (TODO only; see expo/ios/AppDelegates/ExpoAppDelegate.swift). `override`
+// would fail xcodebuild. AppDelegate implements the optional UIKit method.
 const SCENE_CONFIG_METHOD =
-  '  public override func application(\n' +
+  '  public func application(\n' +
   '    _ application: UIApplication,\n' +
   '    configurationForConnecting connectingSceneSession: UISceneSession,\n' +
   '    options: UIScene.ConnectionOptions\n' +
@@ -88,8 +91,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
     guard let factory = appDelegate.reactNativeFactory else {
       NSLog("withSceneLifecycle: AppDelegate.reactNativeFactory is nil; didFinishLaunchingWithOptions did not finish React Native setup. Refusing to show a blank window.")
-      assertionFailure("withSceneLifecycle: reactNativeFactory is nil")
-      return
+      preconditionFailure("withSceneLifecycle: reactNativeFactory is nil")
     }
 
     // Cold-start links arrive here, not in AppDelegate launchOptions.

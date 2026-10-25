@@ -60,4 +60,4 @@ jobs:
           grep -F 'sceneDidEnterBackground' "$APP_DELEGATE"
           grep -F 'applicationDidEnterBackground' "$APP_DELEGATE"
           grep -F 'configurationForConnecting' "$APP_DELEGATE"
-          grep -F 'assertionFailure("withSceneLifecycle: reactNativeFactory is nil")' "$APP_DELEGATE"
+          grep -F 'preconditionFailure("withSceneLifecycle: reactNativeFactory is nil")' "$APP_DELEGATE"
