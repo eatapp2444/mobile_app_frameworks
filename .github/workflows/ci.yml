@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.4'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Jest
+        run: npx jest --ci
+
+      - name: Node tests (src)
+        run: npx tsx --test src/*.test.ts
+
+      - name: Node tests (plugins)
+        run: node --test plugins/*.test.js
+
+      - name: Prebuild iOS and assert scene lifecycle
+        env:
+          EATAPP_BUNDLE_ID: com.jaihoindia
+          EATAPP_SLUG: jai-ho-indian-restaurant
+          EATAPP_APP_NAME: Jai Ho Indian
+          EATAPP_VERSION: 4.0.2
+          EATAPP_BUILD_NUMBER: '6'
+          EAS_PROJECT_ID: b4bea2c5-5410-4762-8f8e-bff64a4f5910
+          EATAPP_SKIP_CONFIG_FETCH: '1'
+          EAS_BUILD_NO_EXPO_GO_WARNING: 'true'
+        run: |
+          set -euo pipefail
+          npx expo prebuild --platform ios --clean --no-install
+          APP_DELEGATE=$(find ios -name AppDelegate.swift ! -path '*OneSignal*' | head -n 1)
+          INFO_PLIST=$(find ios -name Info.plist ! -path '*OneSignal*' ! -path '*Supporting*' | head -n 1)
+          echo "AppDelegate=$APP_DELEGATE"
+          echo "Info.plist=$INFO_PLIST"
+          test -n "$APP_DELEGATE" && test -f "$APP_DELEGATE"
+          test -n "$INFO_PLIST" && test -f "$INFO_PLIST"
+          grep -F 'class SceneDelegate' "$APP_DELEGATE"
+          grep -F 'UIApplicationSceneManifest' "$INFO_PLIST"
+          grep -F '$(PRODUCT_MODULE_NAME).SceneDelegate' "$INFO_PLIST"
+          grep -F 'sceneDidBecomeActive' "$APP_DELEGATE"
+          grep -F 'applicationDidBecomeActive' "$APP_DELEGATE"
+          grep -F 'sceneDidEnterBackground' "$APP_DELEGATE"
+          grep -F 'applicationDidEnterBackground' "$APP_DELEGATE"
+          grep -F 'Default Configuration' "$INFO_PLIST"
+          if grep -F 'configurationForConnecting' "$APP_DELEGATE"; then
+            echo "AppDelegate must not implement configurationForConnecting; Info.plist names SceneDelegate"
+            exit 1
+          fi
+          grep -F 'preconditionFailure("withSceneLifecycle: reactNativeFactory is nil")' "$APP_DELEGATE"

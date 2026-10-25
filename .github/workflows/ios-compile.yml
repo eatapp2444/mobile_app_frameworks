@@ -1,0 +1,89 @@
+# Compile proof for the Expo 54 UIScene AppDelegate patch.
+# workflow_dispatch stays for Fenwick-approved manual runs. pull_request is
+# path-filtered so a PR-branch commit can start this without the file on main.
+# GitHub macOS minutes may cost money.
+name: iOS compile
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'plugins/withSceneLifecycle*'
+      - 'app.config.js'
+      - '.github/workflows/ios-compile.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    name: xcodebuild simulator
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.4'
+          cache: npm
+
+      - name: Select Xcode 26.x
+        run: |
+          set -euo pipefail
+          ls /Applications | grep -i Xcode || true
+          APP=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1)
+          if [ -z "${APP:-}" ]; then
+            echo "Xcode 26.x is not installed on this macos-15 runner"
+            ls /Applications
+            exit 1
+          fi
+          sudo xcode-select -s "$APP/Contents/Developer"
+          xcodebuild -version
+          xcodebuild -version | awk 'NR==1' | grep -E 'Xcode 26\.'
+
+      - name: Install JS deps
+        run: npm ci
+
+      - name: Expo prebuild (Jai Ho)
+        env:
+          EATAPP_BUNDLE_ID: com.jaihoindia
+          EATAPP_SLUG: jai-ho-indian-restaurant
+          EATAPP_APP_NAME: Jai Ho Indian
+          EATAPP_VERSION: 4.0.2
+          EATAPP_BUILD_NUMBER: '6'
+          EAS_PROJECT_ID: b4bea2c5-5410-4762-8f8e-bff64a4f5910
+          EATAPP_SKIP_CONFIG_FETCH: '1'
+          EAS_BUILD_NO_EXPO_GO_WARNING: 'true'
+        run: npx expo prebuild --platform ios --clean --no-install
+
+      - name: CocoaPods
+        working-directory: ios
+        run: pod install
+
+      - name: xcodebuild iOS Simulator (unsigned)
+        run: |
+          set -euo pipefail
+          WORKSPACE=$(find ios -maxdepth 1 -name '*.xcworkspace' -type d | sort | head -n 1)
+          if [ -z "${WORKSPACE:-}" ] || [ ! -d "$WORKSPACE" ]; then
+            echo "No ios/*.xcworkspace directory found"
+            ls -la ios || true
+            exit 1
+          fi
+          echo "workspace=$WORKSPACE"
+          xcodebuild -list -workspace "$WORKSPACE"
+          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          if ! xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{f=1; next} f && /^[[:space:]]*$/{exit} f && NF {print $1}' | grep -qx "$SCHEME"; then
+            echo "Expected scheme '$SCHEME' is not listed by xcodebuild -list for $WORKSPACE; refusing to fall back to Pods or another scheme"
+            exit 1
+          fi
+          echo "scheme=$SCHEME"
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
