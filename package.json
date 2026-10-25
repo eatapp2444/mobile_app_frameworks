@@ -13,7 +13,7 @@
     "doctor": "npx expo-doctor",
     "sync-config": "node scripts/fetch-config.js",
     "eas-build-pre-install": "node scripts/fetch-config.js",
-    "test": "jest --ci && tsx --test src/*.test.ts",
+    "test": "jest --ci && tsx --test src/*.test.ts && node --test plugins/*.test.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
