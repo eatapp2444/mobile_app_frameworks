@@ -62,12 +62,25 @@ jobs:
         run: pod install
 
       - name: xcodebuild iOS Simulator (unsigned)
-        working-directory: ios
         run: |
           set -euo pipefail
-          WORKSPACE=$(ls -1 *.xcworkspace | head -n 1)
-          SCHEME="${WORKSPACE%.xcworkspace}"
-          echo "workspace=$WORKSPACE scheme=$SCHEME"
+          WORKSPACE=$(find ios -maxdepth 1 -name '*.xcworkspace' -type d | sort | head -n 1)
+          if [ -z "${WORKSPACE:-}" ] || [ ! -d "$WORKSPACE" ]; then
+            echo "No ios/*.xcworkspace directory found"
+            ls -la ios || true
+            exit 1
+          fi
+          echo "workspace=$WORKSPACE"
+          xcodebuild -list -workspace "$WORKSPACE"
+          WANT=$(basename "$WORKSPACE" .xcworkspace)
+          SCHEMES=$(xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{f=1; next} f && /^[[:space:]]*$/{exit} f && NF {print $1}')
+          echo "schemes=$SCHEMES"
+          if echo "$SCHEMES" | grep -qx "$WANT"; then
+            SCHEME="$WANT"
+          else
+            SCHEME=$(echo "$SCHEMES" | head -n 1)
+          fi
+          echo "scheme=$SCHEME"
           xcodebuild \
             -workspace "$WORKSPACE" \
             -scheme "$SCHEME" \
