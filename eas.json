@@ -9,25 +9,25 @@
       "env": {
         "EATAPP_API_URL": "https://mobileforge-studio.lovable.app/api/public/apps/config"
       },
-      "ios": { "image": "latest" },
+      "ios": { "image": "sdk-54" },
       "android": { "image": "latest" }
     },
     "development": {
       "extends": "base",
       "developmentClient": true,
       "distribution": "internal",
-      "ios": { "image": "latest", "simulator": true },
+      "ios": { "image": "sdk-54", "simulator": true },
       "android": { "image": "latest", "buildType": "apk" }
     },
     "preview": {
       "extends": "base",
       "distribution": "internal",
-      "ios": { "image": "latest" },
+      "ios": { "image": "sdk-54" },
       "android": { "image": "latest", "buildType": "apk" }
     },
     "production": {
       "extends": "base",
-      "ios": { "image": "latest", "resourceClass": "m-medium" },
+      "ios": { "image": "sdk-54", "resourceClass": "m-medium" },
       "android": { "image": "latest", "buildType": "app-bundle" }
     }
   },
