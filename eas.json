@@ -27,6 +27,16 @@
     },
     "production": {
       "extends": "base",
+      "env": {
+        "EATAPP_BUNDLE_ID": "com.jaihoindia",
+        "EATAPP_SLUG": "jai-ho-indian-restaurant",
+        "EATAPP_APP_NAME": "Jai Ho Indian",
+        "EATAPP_VERSION": "4.0.2",
+        "EATAPP_BUILD_NUMBER": "7",
+        "EAS_PROJECT_ID": "b4bea2c5-5410-4762-8f8e-bff64a4f5910",
+        "EATAPP_EAS_PROJECT_ID": "b4bea2c5-5410-4762-8f8e-bff64a4f5910",
+        "EAS_BUILD_NO_EXPO_GO_WARNING": "true"
+      },
       "ios": { "image": "sdk-54", "resourceClass": "m-medium" },
       "android": { "image": "latest", "buildType": "app-bundle" }
     }
