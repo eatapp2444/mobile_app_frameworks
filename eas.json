@@ -27,7 +27,7 @@
     },
     "production": {
       "extends": "base",
-      "ios": { "image": "latest", "resourceClass": "m-medium" },
+      "ios": { "image": "macos-tahoe-26.5-xcode-26.6", "resourceClass": "m-medium" },
       "android": { "image": "latest", "buildType": "app-bundle" }
     }
   },
