@@ -186,11 +186,13 @@ test('Expo 54 ExpoAppDelegate lifecycle methods are open; configurationForConnec
   );
 });
 
-test('ios-compile workflow is manual-trigger only and unsigned simulator xcodebuild', () => {
+test('ios-compile workflow is dispatch or path-filtered pull_request and unsigned simulator xcodebuild', () => {
   const src = fs.readFileSync(path.join(__dirname, '../.github/workflows/ios-compile.yml'), 'utf8');
-  assert.match(src, /^on:\n  workflow_dispatch:\n/m);
+  assert.match(src, /^on:\n  workflow_dispatch:\n  pull_request:\n    paths:\n/m);
+  assert.match(src, /plugins\/withSceneLifecycle\*/);
+  assert.match(src, /app\.config\.js/);
+  assert.match(src, /\.github\/workflows\/ios-compile\.yml/);
   assert.match(src, /^permissions:\n  contents: read\n/m);
-  assert.doesNotMatch(src, /\bpull_request\b/);
   assert.doesNotMatch(src, /\bpush:\b/);
   assert.match(src, /runs-on: macos-15/);
   assert.match(src, /Xcode_26\*\.app/);

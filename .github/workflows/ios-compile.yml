@@ -1,10 +1,16 @@
-# Manual-only compile proof for the Expo 54 UIScene AppDelegate patch.
-# Do NOT add branch or PR event triggers. GitHub macOS minutes may cost
-# money and need Fenwick's OK before anyone dispatches this workflow.
+# Compile proof for the Expo 54 UIScene AppDelegate patch.
+# workflow_dispatch stays for Fenwick-approved manual runs. pull_request is
+# path-filtered so a PR-branch commit can start this without the file on main.
+# GitHub macOS minutes may cost money.
 name: iOS compile
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'plugins/withSceneLifecycle*'
+      - 'app.config.js'
+      - '.github/workflows/ios-compile.yml'
 
 permissions:
   contents: read
