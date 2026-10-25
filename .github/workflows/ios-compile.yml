@@ -72,13 +72,10 @@ jobs:
           fi
           echo "workspace=$WORKSPACE"
           xcodebuild -list -workspace "$WORKSPACE"
-          WANT=$(basename "$WORKSPACE" .xcworkspace)
-          SCHEMES=$(xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{f=1; next} f && /^[[:space:]]*$/{exit} f && NF {print $1}')
-          echo "schemes=$SCHEMES"
-          if echo "$SCHEMES" | grep -qx "$WANT"; then
-            SCHEME="$WANT"
-          else
-            SCHEME=$(echo "$SCHEMES" | head -n 1)
+          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          if ! xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{f=1; next} f && /^[[:space:]]*$/{exit} f && NF {print $1}' | grep -qx "$SCHEME"; then
+            echo "Expected scheme '$SCHEME' is not listed by xcodebuild -list for $WORKSPACE; refusing to fall back to Pods or another scheme"
+            exit 1
           fi
           echo "scheme=$SCHEME"
           xcodebuild \
