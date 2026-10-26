@@ -1,0 +1,43 @@
+{
+  "app": { "name": "Fenwick", "bundleId": "app.eatapp.fenwick" },
+  "theme": {},
+  "venues": [],
+  "navigation": {
+    "maxVisible": 4,
+    "items": [
+      { "id": "home", "label": "Home", "route": "/" },
+      {
+        "id": "order",
+        "label": "Order",
+        "isGroup": true,
+        "action": "group",
+        "submenu": {
+          "title": "Order",
+          "items": [
+            { "id": "hahndorf", "label": "Hahndorf", "route": "https://order.example.orderexperience.net/hahndorf/menu" },
+            { "id": "murray-bridge", "label": "Murray Bridge", "route": "https://order.example.orderexperience.net/murray/menu" },
+            { "id": "mount-barker", "label": "Mount Barker", "route": "https://order.example.orderexperience.net/barker/menu" }
+          ]
+        }
+      },
+      {
+        "id": "venues",
+        "label": "Venues",
+        "isGroup": true,
+        "action": "group",
+        "submenu": {
+          "title": "Venues",
+          "items": [
+            { "id": "venue-hahndorf", "label": "Hahndorf", "route": "/hahndorf" },
+            { "id": "venue-murray", "label": "Murray Bridge", "route": "/murray-bridge" },
+            { "id": "venue-barker", "label": "Mount Barker", "route": "/mount-barker" }
+          ]
+        }
+      },
+      { "id": "about-us", "label": "About us", "route": "/about-us" }
+    ]
+  },
+  "home": {
+    "html": "<a href=\"eatapp://open/order\">Order Online</a><ul><li><a href=\"eatapp://open/venues\">Hahndorf</a></li><li><a href=\"eatapp://open/venues\">Murray Bridge</a></li></ul><a href=\"eatapp://open/venues\">Our Venues</a>"
+  }
+}

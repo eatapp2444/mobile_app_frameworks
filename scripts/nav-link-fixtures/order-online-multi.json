@@ -1,0 +1,39 @@
+{
+  "app": { "name": "BK's Takeaway", "bundleId": "com.company.bkstakeaway" },
+  "theme": {},
+  "venues": [],
+  "navigation": {
+    "items": [
+      { "id": "home", "label": "Home", "route": "/" },
+      {
+        "id": "cd6769b9-4716-4fbd-bb05-0932e5a7396b",
+        "label": "Order Online",
+        "isGroup": true,
+        "action": "group",
+        "submenu": {
+          "title": "Order Online",
+          "items": [
+            { "id": "warragul-order", "label": "Warragul", "route": "https://bks-takeaway.orderexperience.net/a/menu" },
+            { "id": "trafalgar-order", "label": "Trafalgar", "route": "https://orders.eatapp.online/menu/xyz" }
+          ]
+        }
+      },
+      {
+        "id": "ad6ff789-4a0a-bc31-2eb5a7f69281",
+        "label": "Venues",
+        "isGroup": true,
+        "action": "group",
+        "submenu": {
+          "title": "Venues",
+          "items": [
+            { "id": "warragul-venue", "label": "Warragul", "route": "/warragul-venue" },
+            { "id": "trafalgar-venue", "label": "Trafalgar", "route": "/trafalgar" }
+          ]
+        }
+      }
+    ]
+  },
+  "home": {
+    "html": "<a href=\"eatapp://open/order\">Order Online</a><a href=\"eatapp://open/venues\">Our Venues</a><li><a href=\"eatapp://open/venues\">Warragul</a></li>"
+  }
+}

@@ -1,6 +1,8 @@
 import React, { createContext, useCallback, useContext, useMemo, useRef } from 'react';
+import type { NavItem } from './config';
 
-export type ActivateTab = (name: string) => boolean;
+/** Tab name (`open/tab/<name>`) or an already-resolved nav item (short aliases). */
+export type ActivateTab = (target: string | NavItem) => boolean;
 
 type Ctx = {
   /** Same as tapping a tab (or More). Group tabs open their sheet; unknown names no-op. */

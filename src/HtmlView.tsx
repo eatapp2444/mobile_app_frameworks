@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
-import { parseAppLink, shouldAcceptAppLink } from './appLinks';
+import { parseAppLink, resolveAppLinkTarget, shouldAcceptAppLink } from './appLinks';
 import { useConfig, useTheme } from './ConfigProvider';
 import {
   CMS_HTML_CACHE_MODE,
@@ -119,9 +119,15 @@ export const HtmlView = React.memo(function HtmlView({
       const now = Date.now();
       if (!shouldAcceptAppLink(lastAppLink.current, url, now)) return;
       lastAppLink.current = { url, at: now };
+      if (action.role) {
+        const item = resolveAppLinkTarget(url, config?.navigation?.items, config);
+        if (!item) return;
+        activateTab(item);
+        return;
+      }
       activateTab(action.name);
     },
-    [activateTab],
+    [activateTab, config],
   );
   const documentLoaded = useRef(false);
   const sourceRef = useRef<{ html: string; baseUrl: string } | null>(null);

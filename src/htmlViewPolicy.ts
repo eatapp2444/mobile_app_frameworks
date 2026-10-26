@@ -108,7 +108,7 @@ export function htmlViewNavDecision(
   opts: HtmlViewNavOpts = {},
 ): HtmlViewNavDecision {
   if (!url || url === 'about:blank' || url.startsWith('data:') || url.startsWith('file:')) return 'allow';
-  // Custom in-app actions (eatapp://open/tab/<name>, eatapp://open/order).
+  // Custom in-app actions (eatapp://open/tab/<name>, eatapp://open/order, eatapp://open/venues).
   // Unknown / non-tap requests are blocked so the WebView never loads them.
   if (isAppLink(url)) {
     if (parseAppLink(url).type === 'ignore' || !isHtmlViewUserTap(opts)) return 'block';

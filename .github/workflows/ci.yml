@@ -33,6 +33,9 @@ jobs:
       - name: Node tests (plugins)
         run: node --test plugins/*.test.js
 
+      - name: Nav link destinations
+        run: npx tsx scripts/check-nav-links.ts scripts/nav-link-fixtures/*.json
+
       - name: Prebuild iOS and assert scene lifecycle
         env:
           EATAPP_BUNDLE_ID: com.jaihoindia

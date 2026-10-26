@@ -54,8 +54,8 @@ export function TabBar() {
 
   useEffect(
     () =>
-      registerActivateTab((name) => {
-        const item = findNavTab(catalogRef.current, name);
+      registerActivateTab((target) => {
+        const item = typeof target === 'string' ? findNavTab(catalogRef.current, target) : target;
         if (!item) return false;
         goRef.current(item);
         return true;
