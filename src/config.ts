@@ -60,6 +60,8 @@ export type AppConfig = {
     notificationBell?: boolean;
   };
   home?: { layout?: string; html?: string; sections?: any[]; blank?: BlankHome };
+  /** Present on live CMS payloads; often `[]` with venue rows on the nav group instead. */
+  venues?: unknown[];
   pages?: Array<{ slug: string; title: string; type: string; html?: string; url?: string }>;
   notifications?: { enabled?: boolean; source?: string; history?: NotificationItem[] };
   onesignal?: { appId?: string };

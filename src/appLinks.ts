@@ -1,9 +1,14 @@
-import type { NavItem } from './config';
+import type { AppConfig, NavItem } from './config';
 
 /** Custom scheme intercepted by HtmlView (homepage / CMS page HTML). */
 export const APP_LINK_SCHEME = 'eatapp:';
 
-export type AppLinkAction = { type: 'open-tab'; name: string } | { type: 'ignore' };
+/** Short homepage aliases that apply the single- vs multi-venue rule. */
+export type AppLinkRole = 'order' | 'venues';
+
+export type AppLinkAction =
+  | { type: 'open-tab'; name: string; role?: AppLinkRole }
+  | { type: 'ignore' };
 
 export type NavSheet = { title: string; items: NavItem[] };
 
@@ -15,7 +20,8 @@ export function isAppLink(url: string): boolean {
  * Parse builder homepage links.
  *
  *   eatapp://open/tab/<name>     → same as tapping that tab (sheet if it is a group)
- *   eatapp://open/order          → the only short alias (same as eatapp://open/tab/order)
+ *   eatapp://open/order          → Order / Order Online tab (single- vs multi-venue)
+ *   eatapp://open/venues         → Venues / Our Venues tab (single- vs multi-venue)
  *   anything else eatapp://…     → ignore
  *
  * `?query` and `#hash` are stripped so `eatapp://open/tab/order?x=1` still works.
@@ -46,9 +52,12 @@ export function parseAppLink(url: string): AppLinkAction {
     return { type: 'open-tab', name };
   }
 
-  // Short alias is Order only. Venues / About / … must use open/tab/<name>.
-  if (parts.length === 2 && parts[1].toLowerCase() === 'order') {
-    return { type: 'open-tab', name: parts[1] };
+  // Short aliases apply the Fenwick single- vs multi-venue rule.
+  if (parts.length === 2) {
+    const alias = parts[1].toLowerCase();
+    if (alias === 'order' || alias === 'venues') {
+      return { type: 'open-tab', name: parts[1], role: alias };
+    }
   }
   return { type: 'ignore' };
 }
@@ -67,14 +76,13 @@ export function shouldAcceptAppLink(
   return now - prev.at >= windowMs;
 }
 
-/** "About us" / "about_us" / "About-Us" → "about-us" */
+/** "About us" / "about_us" / "Order Online!" → "about-us" / "about-us" / "order-online" */
 export function normalizeTabName(name: string): string {
   return String(name ?? '')
     .trim()
     .toLowerCase()
-    .replace(/[_]+/g, ' ')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-');
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 export function navItemChildren(item: NavItem | null | undefined): NavItem[] {
@@ -125,6 +133,153 @@ export function findNavTab(items: NavItem[] | null | undefined, name: string): N
     if (normalizeTabName(item.id) === want || normalizeTabName(item.label) === want) return item;
   }
   return null;
+}
+
+const ORDER_ROLE_NAMES = new Set(['order', 'order-online']);
+const VENUES_ROLE_NAMES = new Set(['venues', 'our-venues']);
+
+function tabNames(item: NavItem): string[] {
+  return [item.id, item.label].map(normalizeTabName).filter(Boolean);
+}
+
+/** True when id/label is Order or Order Online — not Menu, Account, Venues. */
+export function isOrderTab(item: NavItem | null | undefined): boolean {
+  return !!item && tabNames(item).some((n) => ORDER_ROLE_NAMES.has(n));
+}
+
+/** True when id/label is Venues or Our Venues — not Order Online. */
+export function isVenuesTab(item: NavItem | null | undefined): boolean {
+  return !!item && tabNames(item).some((n) => VENUES_ROLE_NAMES.has(n));
+}
+
+export function findRoleTab(
+  items: NavItem[] | null | undefined,
+  role: AppLinkRole,
+): NavItem | null {
+  const match = role === 'order' ? isOrderTab : isVenuesTab;
+  for (const item of items ?? []) {
+    if (match(item)) return item;
+  }
+  return null;
+}
+
+/**
+ * Multi-venue only when this Order/Venues group has two or more children to
+ * pick from. `config.venues` is not a picker — an empty group with a long
+ * venues list still has nothing to show.
+ */
+export function isMultiVenueTab(item: NavItem | null | undefined): boolean {
+  return navItemChildren(item).length >= 2;
+}
+
+/**
+ * Online ordering listing. CMS venue pages are `/slug`; Account login is not a menu.
+ */
+export function isOrderingHref(href?: string | null): boolean {
+  const raw = String(href ?? '').trim();
+  if (!/^https?:\/\//i.test(raw)) return false;
+  try {
+    const u = new URL(raw);
+    if (/orderexperience\.net$/i.test(u.hostname)) return true;
+    if (/orders\.eatapp\.online$/i.test(u.hostname) && /\/menu/i.test(u.pathname)) return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+export function navItemHref(item: NavItem | null | undefined): string {
+  return String(item?.url || item?.route || '').trim();
+}
+
+function isVenuePageItem(item: NavItem | null | undefined): boolean {
+  const href = navItemHref(item);
+  if (!href || href === '/') return false;
+  if (isOrderingHref(href)) return false;
+  if (/^(tel:|mailto:|sms:)/i.test(href)) return false;
+  return !/^https?:\/\//i.test(href);
+}
+
+/** Drop group flags so go() opens the page instead of a sheet. */
+function asDirectTarget(item: NavItem): NavItem {
+  return { id: item.id, label: item.label, route: item.route, url: item.url };
+}
+
+function collectLeaves(item: NavItem): NavItem[] {
+  const kids = navItemChildren(item);
+  if (!kids.length) return [item];
+  return kids.flatMap(collectLeaves);
+}
+
+/** True when every leaf a group sheet would show is an ordering listing. */
+function showsOnlyOrdering(item: NavItem | null | undefined): boolean {
+  if (!item) return false;
+  const leaves = collectLeaves(item);
+  return leaves.length > 0 && leaves.every((leaf) => isOrderingHref(navItemHref(leaf)));
+}
+
+function venuePageFallback(tab: NavItem): NavItem | null {
+  const pageChild = navItemChildren(tab).find((c) => isVenuePageItem(c) && !showsOnlyOrdering(c));
+  if (pageChild) return pageChild;
+  if (isVenuePageItem(tab)) return isGroupNavItem(tab) ? asDirectTarget(tab) : tab;
+  return null;
+}
+
+function resolveOrderTarget(tab: NavItem): NavItem {
+  const kids = navItemChildren(tab);
+  if (kids.length >= 2) return tab;
+  if (kids.length === 1 && isOrderingHref(navItemHref(kids[0]))) return kids[0];
+  return tab;
+}
+
+function resolveVenuesTarget(tab: NavItem): NavItem | null {
+  const kids = navItemChildren(tab);
+  let dest: NavItem | null;
+  if (kids.length >= 2) dest = tab;
+  else if (kids.length === 1) {
+    const child = kids[0];
+    if (!isOrderingHref(navItemHref(child)) && navItemHref(child)) dest = child;
+    else dest = venuePageFallback(tab);
+  } else if (isOrderingHref(navItemHref(tab))) {
+    dest = venuePageFallback(tab);
+  } else {
+    dest = tab;
+  }
+
+  if (dest && showsOnlyOrdering(dest)) {
+    const page = venuePageFallback(tab);
+    if (page && !showsOnlyOrdering(page)) return page;
+    return null;
+  }
+  return dest;
+}
+
+/**
+ * Item TabBar.go() should receive for an eatapp:// homepage link.
+ *
+ * Short aliases (`open/order`, `open/venues`) match Order / Order Online and
+ * Venues / Our Venues, then apply the Fenwick rule: a group with two or more
+ * children opens the bottom-nav sheet; otherwise the only listing/page opens
+ * directly. The venues role never returns an ordering URL.
+ * `open/tab/<name>` stays an exact id/label match and is unchanged.
+ */
+export function resolveAppLinkTarget(
+  url: string,
+  items: NavItem[] | null | undefined,
+  _config?: Pick<AppConfig, 'venues'> | { venues?: unknown } | null,
+): NavItem | null {
+  const action = parseAppLink(url);
+  if (action.type !== 'open-tab') return null;
+  if (action.role) {
+    const tab = findRoleTab(items, action.role);
+    if (!tab) return null;
+    if (action.role === 'order') return resolveOrderTarget(tab);
+    const dest = resolveVenuesTarget(tab);
+    if (dest && showsOnlyOrdering(dest)) return null;
+    if (dest && !isGroupNavItem(dest) && isOrderingHref(navItemHref(dest))) return null;
+    return dest;
+  }
+  return findNavTab(items, action.name);
 }
 
 export function moreNavItem(

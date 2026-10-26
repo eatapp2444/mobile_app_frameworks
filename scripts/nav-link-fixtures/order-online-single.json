@@ -1,0 +1,20 @@
+{
+  "app": { "name": "Bakehouse", "bundleId": "com.bakehouse" },
+  "theme": {},
+  "venues": [],
+  "navigation": {
+    "items": [
+      { "id": "home", "label": "Home", "route": "/" },
+      {
+        "id": "0e0b38e9-089c-4bcc-ae31-a9141870fece",
+        "label": "Order Online",
+        "route": "https://bakehouse.orderexperience.net/abc/menu"
+      },
+      { "id": "uuid-venues", "label": "Our Venues", "route": "/our-venue" },
+      { "id": "account", "label": "Account", "route": "https://orders.eatapp.online/admin/user/login" }
+    ]
+  },
+  "home": {
+    "html": "<a href=\"eatapp://open/order\">Order Online</a><a href=\"eatapp://open/venues\">Our Venues</a>"
+  }
+}

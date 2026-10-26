@@ -222,20 +222,27 @@ open the same native tabs and group sheets as the tab bar. Links are
 intercepted inside the WebView — the same path as `tel:` / `mailto:` / `https`.
 The page does **not** navigate away, so there is no white flash.
 
-This is **generic**: any tab can be a submenu (Order, Venues, More, …). The
-framework does not special-case Order except as a short alias.
+This is **generic**: any tab can be a submenu (Order, Venues, More, …).
+
+`eatapp://open/order` and `eatapp://open/venues` match tabs named **Order** /
+**Order Online** and **Venues** / **Our Venues** (case and punctuation
+insensitive). Two or more group children → the bottom-nav sheet; otherwise the
+listing or venue page. Venues never opens an ordering URL. Generator hrefs:
+Order Online button `eatapp://open/order`; venue rows `eatapp://open/venues`.
+`npm run check:nav-links -- <config.json>` is a required pre-build check.
 
 | href | Behaviour |
 | --- | --- |
 | `eatapp://open/tab/<name>` | Same as tapping that tab. If the tab is a **group** (`isGroup` / `action: "group"` with sub-items), its sheet opens (e.g. Venues → Hahndorf / Murray Bridge / Mount Barker). If it is not a group, that tab is selected. `<name>` matches the tab **id** or **label**, case-insensitive (`Venues`, `venues`, `about-us`). Query strings and hashes are ignored (`eatapp://open/tab/order?x=1`). |
-| `eatapp://open/order` | The **only** short alias — same as `eatapp://open/tab/order`. `eatapp://open/venues` is ignored; use `eatapp://open/tab/venues`. |
+| `eatapp://open/order` | Order / Order Online tab. Single-venue → that venue's online ordering listing. Multi-venue → the order sheet. |
+| `eatapp://open/venues` | Venues / Our Venues tab. Single-venue → that venue's page. Multi-venue → the venues sheet. Never an ordering URL. |
 | any other `eatapp://…` | Ignored. The WebView does not load the URL. Unknown tab names are also no-ops. |
 
 Example for the homepage HTML:
 
 ```html
 <a href="eatapp://open/order">Order now</a>
-<a href="eatapp://open/tab/venues">Our venues</a>
+<a href="eatapp://open/venues">Our venues</a>
 ```
 
 Apps that never use these hrefs are unchanged. Do not use `https://…` if you

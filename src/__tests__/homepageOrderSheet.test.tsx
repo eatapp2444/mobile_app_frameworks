@@ -234,7 +234,7 @@ describe('homepage eatapp://open/order', () => {
     });
   });
 
-  it('strips query strings and ignores the open/<name> alias except order', async () => {
+  it('strips query strings; eatapp://open/venues opens the Venues sheet', async () => {
     const tree = await renderHome();
     await act(async () => {
       expect(fireHtmlLink('eatapp://open/tab/venues?x=1')).toBe(false);
@@ -246,6 +246,7 @@ describe('homepage eatapp://open/order', () => {
       expect(fireHtmlLink('eatapp://open/venues')).toBe(false);
     });
     expect(mockRouter.replace).not.toHaveBeenCalled();
+    expect(collectText(tree.root.findByProps({ testID: 'nav-sheet-title' }))).toBe('Venues');
   });
 
   it('does not treat a post-load Android location change as an eatapp tap', async () => {

@@ -22,7 +22,7 @@ jobs:
         run: npm ci
 
       - name: Typecheck
-        run: npx tsc --noEmit
+        run: npx tsc --noEmit && npx tsc --noEmit -p tsconfig.scripts.json
 
       - name: Jest
         run: npx jest --ci
@@ -32,6 +32,9 @@ jobs:
 
       - name: Node tests (plugins)
         run: node --test plugins/*.test.js
+
+      - name: Nav link destinations
+        run: npx tsx scripts/check-nav-links.ts scripts/nav-link-fixtures/*.json
 
       - name: Prebuild iOS and assert scene lifecycle
         env:
