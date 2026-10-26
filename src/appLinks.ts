@@ -205,8 +205,21 @@ function asDirectTarget(item: NavItem): NavItem {
   return { id: item.id, label: item.label, route: item.route, url: item.url };
 }
 
+function collectLeaves(item: NavItem): NavItem[] {
+  const kids = navItemChildren(item);
+  if (!kids.length) return [item];
+  return kids.flatMap(collectLeaves);
+}
+
+/** True when every leaf a group sheet would show is an ordering listing. */
+function showsOnlyOrdering(item: NavItem | null | undefined): boolean {
+  if (!item) return false;
+  const leaves = collectLeaves(item);
+  return leaves.length > 0 && leaves.every((leaf) => isOrderingHref(navItemHref(leaf)));
+}
+
 function venuePageFallback(tab: NavItem): NavItem | null {
-  const pageChild = navItemChildren(tab).find(isVenuePageItem);
+  const pageChild = navItemChildren(tab).find((c) => isVenuePageItem(c) && !showsOnlyOrdering(c));
   if (pageChild) return pageChild;
   if (isVenuePageItem(tab)) return isGroupNavItem(tab) ? asDirectTarget(tab) : tab;
   return null;
@@ -221,14 +234,24 @@ function resolveOrderTarget(tab: NavItem): NavItem {
 
 function resolveVenuesTarget(tab: NavItem): NavItem | null {
   const kids = navItemChildren(tab);
-  if (kids.length >= 2) return tab;
-  if (kids.length === 1) {
+  let dest: NavItem | null;
+  if (kids.length >= 2) dest = tab;
+  else if (kids.length === 1) {
     const child = kids[0];
-    if (!isOrderingHref(navItemHref(child)) && navItemHref(child)) return child;
-    return venuePageFallback(tab) ?? tab;
+    if (!isOrderingHref(navItemHref(child)) && navItemHref(child)) dest = child;
+    else dest = venuePageFallback(tab);
+  } else if (isOrderingHref(navItemHref(tab))) {
+    dest = venuePageFallback(tab);
+  } else {
+    dest = tab;
   }
-  if (isOrderingHref(navItemHref(tab))) return venuePageFallback(tab);
-  return tab;
+
+  if (dest && showsOnlyOrdering(dest)) {
+    const page = venuePageFallback(tab);
+    if (page && !showsOnlyOrdering(page)) return page;
+    return null;
+  }
+  return dest;
 }
 
 /**
@@ -252,6 +275,7 @@ export function resolveAppLinkTarget(
     if (!tab) return null;
     if (action.role === 'order') return resolveOrderTarget(tab);
     const dest = resolveVenuesTarget(tab);
+    if (dest && showsOnlyOrdering(dest)) return null;
     if (dest && !isGroupNavItem(dest) && isOrderingHref(navItemHref(dest))) return null;
     return dest;
   }

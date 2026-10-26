@@ -388,25 +388,6 @@ test('unknown tab names are unresolved; open/tab stays exact', () => {
 });
 
 test('venues role never resolves to an ordering URL', () => {
-  const orderingChild: NavItem[] = [
-    { id: 'home', label: 'Home', route: '/' },
-    {
-      id: 'venues',
-      label: 'Venues',
-      isGroup: true,
-      action: 'group',
-      submenu: {
-        title: 'Venues',
-        items: [{ id: 'only', label: 'Hahndorf', route: 'https://fenwick.orderexperience.net/h/menu' }],
-      },
-    },
-  ];
-  const fromChild = resolveAppLinkTarget('eatapp://open/venues', orderingChild);
-  assert.ok(fromChild);
-  assert.equal(fromChild?.id, 'venues');
-  assert.equal(isOrderingHref(fromChild?.route), false);
-  assert.equal(isGroupNavItem(fromChild), true);
-
   const orderingTab: NavItem[] = [
     { id: 'home', label: 'Home', route: '/' },
     {
@@ -438,6 +419,77 @@ test('venues role never resolves to an ordering URL', () => {
   const page = resolveAppLinkTarget('eatapp://open/venues', pageInstead);
   assert.equal(page?.route, '/hahndorf');
   assert.equal(isOrderingHref(page?.route), false);
+});
+
+test('venues group whose only child is an ordering listing is not a sheet (case A)', () => {
+  const items: NavItem[] = [
+    { id: 'home', label: 'Home', route: '/' },
+    {
+      id: 'venues',
+      label: 'Venues',
+      isGroup: true,
+      action: 'group',
+      submenu: {
+        title: 'Venues',
+        items: [{ id: 'only', label: 'Hahndorf', route: 'https://x.orderexperience.net/menu' }],
+      },
+    },
+  ];
+  const dest = resolveAppLinkTarget('eatapp://open/venues', items);
+  assert.equal(dest, null);
+  assert.equal(isOrderingHref(dest?.route), false);
+});
+
+test('venues nested group whose leaves are all ordering listings is not returned (case B)', () => {
+  const nested: NavItem = {
+    id: 'g',
+    label: 'G',
+    route: '/g',
+    isGroup: true,
+    action: 'group',
+    submenu: {
+      title: 'G',
+      items: [
+        { id: 'a', label: 'A', route: 'https://x.orderexperience.net/a/menu' },
+        { id: 'b', label: 'B', route: 'https://x.orderexperience.net/b/menu' },
+      ],
+    },
+  };
+  const items: NavItem[] = [
+    { id: 'home', label: 'Home', route: '/' },
+    {
+      id: 'venues',
+      label: 'Venues',
+      isGroup: true,
+      action: 'group',
+      submenu: { title: 'Venues', items: [nested] },
+    },
+  ];
+  const dest = resolveAppLinkTarget('eatapp://open/venues', items);
+  assert.notEqual(dest?.id, 'g');
+  assert.equal(isGroupNavItem(dest) && dest?.id === 'g', false);
+  assert.equal(dest, null);
+});
+
+test('venues group with a page route and one ordering child opens the page', () => {
+  const items: NavItem[] = [
+    { id: 'home', label: 'Home', route: '/' },
+    {
+      id: 'venues',
+      label: 'Venues',
+      route: '/venues',
+      isGroup: true,
+      action: 'group',
+      submenu: {
+        title: 'Venues',
+        items: [{ id: 'only', label: 'Hahndorf', route: 'https://x.orderexperience.net/menu' }],
+      },
+    },
+  ];
+  const dest = resolveAppLinkTarget('eatapp://open/venues', items);
+  assert.equal(dest?.route, '/venues');
+  assert.equal(isGroupNavItem(dest), false);
+  assert.equal(isOrderingHref(dest?.route), false);
 });
 
 test('empty Order group is not multi-venue just because config.venues has 2+ entries', () => {
