@@ -222,42 +222,27 @@ open the same native tabs and group sheets as the tab bar. Links are
 intercepted inside the WebView — the same path as `tel:` / `mailto:` / `https`.
 The page does **not** navigate away, so there is no white flash.
 
-This is **generic**: any tab can be a submenu (Order, Venues, More, …). Short
-aliases `eatapp://open/order` and `eatapp://open/venues` follow Fenwick's
-**single- vs multi-venue** rule.
+This is **generic**: any tab can be a submenu (Order, Venues, More, …).
 
-**Rule:** a short alias is multi-venue when the matching Order/Venues tab is a
-group with **two or more children** (the bottom-nav submenu). Otherwise it is
-single-venue: the tab's own destination opens, or its only child if the group
-has exactly one. `config.venues.length` is a fallback only when that group has
-no children. Live CMS payloads often leave `venues: []` and put rows on the
-group.
-
-The Order alias matches a tab whose id or label is `Order`, `Order Online`,
-`Order now`, `Online order`, or `Online ordering`. The Venues alias matches
-`Venues`, `Venue`, `Our Venues`, or `Our Venue`. Unrelated tabs (Menu, Account,
-Home) are not matched. `eatapp://open/tab/<name>` is still an exact id/label
-match and is unchanged.
+`eatapp://open/order` and `eatapp://open/venues` match tabs named **Order** /
+**Order Online** and **Venues** / **Our Venues** (case and punctuation
+insensitive). Two or more group children → the bottom-nav sheet; otherwise the
+listing or venue page. Venues never opens an ordering URL. Generator hrefs:
+Order Online button `eatapp://open/order`; venue rows `eatapp://open/venues`.
+`npm run check:nav-links -- <config.json>` is a required pre-build check.
 
 | href | Behaviour |
 | --- | --- |
 | `eatapp://open/tab/<name>` | Same as tapping that tab. If the tab is a **group** (`isGroup` / `action: "group"` with sub-items), its sheet opens (e.g. Venues → Hahndorf / Murray Bridge / Mount Barker). If it is not a group, that tab is selected. `<name>` matches the tab **id** or **label**, case-insensitive (`Venues`, `venues`, `about-us`). Query strings and hashes are ignored (`eatapp://open/tab/order?x=1`). |
-| `eatapp://open/order` | **Order Online** button. Single-venue → that venue's online ordering listing. Multi-venue → the Order / Order Online bottom-nav sheet so the guest picks a venue. |
-| `eatapp://open/venues` | **Our Venues** rows. Single-venue → that venue's page. Multi-venue → the Venues bottom-nav sheet. Never an ordering URL. |
+| `eatapp://open/order` | Order / Order Online tab. Single-venue → that venue's online ordering listing. Multi-venue → the order sheet. |
+| `eatapp://open/venues` | Venues / Our Venues tab. Single-venue → that venue's page. Multi-venue → the venues sheet. Never an ordering URL. |
 | any other `eatapp://…` | Ignored. The WebView does not load the URL. Unknown tab names are also no-ops. |
 
-Example for the homepage HTML (what the page generator should emit):
+Example for the homepage HTML:
 
 ```html
-<a href="eatapp://open/order">Order online</a>
+<a href="eatapp://open/order">Order now</a>
 <a href="eatapp://open/venues">Our venues</a>
-<li><a href="eatapp://open/venues">Hahndorf</a></li>
-```
-
-Pre-build check (required in CI):
-
-```bash
-npm run check:nav-links -- path/to/config.json
 ```
 
 Apps that never use these hrefs are unchanged. Do not use `https://…` if you

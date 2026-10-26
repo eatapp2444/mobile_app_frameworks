@@ -209,10 +209,12 @@ test('More overflow is addressable as eatapp://open/tab/more', () => {
   assert.equal(moreNavItem([]), null);
 });
 
-test('normalizeTabName collapses spaces and underscores', () => {
+test('normalizeTabName collapses spaces, underscores, and punctuation', () => {
   assert.equal(normalizeTabName('About us'), 'about-us');
   assert.equal(normalizeTabName('Murray_Bridge'), 'murray-bridge');
   assert.equal(normalizeTabName('  Order  '), 'order');
+  assert.equal(normalizeTabName('Order Online!'), 'order-online');
+  assert.equal(normalizeTabName('Our Venues'), 'our-venues');
 });
 
 const orderOnlineNav: NavItem[] = [
@@ -303,6 +305,10 @@ test('findNavTab stays exact; open/order matches Order and Order Online', () => 
   assert.equal(findRoleTab([{ id: 'menu', label: 'Menu', route: '/menu' }], 'order'), null);
   assert.equal(findRoleTab([{ id: 'account', label: 'Account', route: '/account' }], 'order'), null);
   assert.equal(findRoleTab([{ id: 'home', label: 'Home', route: '/' }], 'venues'), null);
+  assert.equal(findRoleTab([{ id: 'o', label: 'Order Online!', route: '/x' }], 'order')?.label, 'Order Online!');
+  assert.equal(findRoleTab([{ id: 'n', label: 'Order now', route: '/x' }], 'order'), null);
+  assert.equal(findRoleTab([{ id: 'v', label: 'Venue', route: '/x' }], 'venues'), null);
+  assert.equal(findRoleTab([{ id: 'v', label: 'Our Venue', route: '/x' }], 'venues'), null);
 });
 
 test('single-venue open/order opens the listing; multi-venue opens the order sheet', () => {
@@ -379,4 +385,100 @@ test('unknown tab names are unresolved; open/tab stays exact', () => {
   assert.equal(resolveAppLinkTarget('eatapp://open/tab/Order Online', orderOnlineNav)?.label, 'Order Online');
   assert.equal(resolveAppLinkTarget('eatapp://open/tab/venues', fenwickNav)?.label, 'Venues');
   assert.equal(resolveAppLinkTarget('eatapp://open/tab/about-us', fenwickNav)?.id, 'about-us');
+});
+
+test('venues role never resolves to an ordering URL', () => {
+  const orderingChild: NavItem[] = [
+    { id: 'home', label: 'Home', route: '/' },
+    {
+      id: 'venues',
+      label: 'Venues',
+      isGroup: true,
+      action: 'group',
+      submenu: {
+        title: 'Venues',
+        items: [{ id: 'only', label: 'Hahndorf', route: 'https://fenwick.orderexperience.net/h/menu' }],
+      },
+    },
+  ];
+  const fromChild = resolveAppLinkTarget('eatapp://open/venues', orderingChild);
+  assert.ok(fromChild);
+  assert.equal(fromChild?.id, 'venues');
+  assert.equal(isOrderingHref(fromChild?.route), false);
+  assert.equal(isGroupNavItem(fromChild), true);
+
+  const orderingTab: NavItem[] = [
+    { id: 'home', label: 'Home', route: '/' },
+    {
+      id: 'venues',
+      label: 'Our Venues',
+      route: 'https://fenwick.orderexperience.net/h/menu',
+    },
+    { id: 'about', label: 'About us', route: '/our-venue' },
+  ];
+  const fromTab = resolveAppLinkTarget('eatapp://open/venues', orderingTab);
+  assert.equal(isOrderingHref(fromTab?.route), false);
+  assert.notEqual(fromTab?.route, 'https://fenwick.orderexperience.net/h/menu');
+  assert.equal(fromTab, null);
+
+  const pageInstead: NavItem[] = [
+    { id: 'home', label: 'Home', route: '/' },
+    {
+      id: 'venues',
+      label: 'Venues',
+      route: 'https://fenwick.orderexperience.net/h/menu',
+      isGroup: true,
+      action: 'group',
+      submenu: {
+        title: 'Venues',
+        items: [{ id: 'page', label: 'Hahndorf', route: '/hahndorf' }],
+      },
+    },
+  ];
+  const page = resolveAppLinkTarget('eatapp://open/venues', pageInstead);
+  assert.equal(page?.route, '/hahndorf');
+  assert.equal(isOrderingHref(page?.route), false);
+});
+
+test('empty Order group is not multi-venue just because config.venues has 2+ entries', () => {
+  const emptyOrder: NavItem = { id: 'order', label: 'Order', isGroup: true, action: 'group' };
+  const items: NavItem[] = [{ id: 'home', label: 'Home', route: '/' }, emptyOrder];
+  const config = { venues: [{ name: 'Hahndorf' }, { name: 'Murray Bridge' }] };
+  assert.equal(isMultiVenueTab(emptyOrder), false);
+  const dest = resolveAppLinkTarget('eatapp://open/order', items, config);
+  assert.equal(dest?.id, 'order');
+  assert.equal(isGroupNavItem(dest), false);
+  assert.equal(sheetFromNavItem(dest), null);
+});
+
+test('single-venue Order child without an ordering URL stays on the submenu', () => {
+  const noUrl: NavItem[] = [
+    { id: 'home', label: 'Home', route: '/' },
+    {
+      id: 'order',
+      label: 'Order',
+      isGroup: true,
+      action: 'group',
+      submenu: { title: 'Order', items: [{ id: 'only', label: 'Only venue' }] },
+    },
+  ];
+  const noUrlDest = resolveAppLinkTarget('eatapp://open/order', noUrl);
+  assert.equal(noUrlDest?.id, 'order');
+  assert.equal(isGroupNavItem(noUrlDest), true);
+
+  const pageChild: NavItem[] = [
+    { id: 'home', label: 'Home', route: '/' },
+    {
+      id: 'order',
+      label: 'Order Online',
+      isGroup: true,
+      action: 'group',
+      submenu: { title: 'Order', items: [{ id: 'only', label: 'Only venue', route: '/only-venue' }] },
+    },
+  ];
+  const pageDest = resolveAppLinkTarget('eatapp://open/order', pageChild);
+  assert.equal(pageDest?.id, 'order');
+  assert.equal(pageDest?.label, 'Order Online');
+  assert.equal(isGroupNavItem(pageDest), true);
+  assert.equal(isOrderingHref(pageDest?.route), false);
 });

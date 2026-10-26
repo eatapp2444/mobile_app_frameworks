@@ -76,14 +76,13 @@ export function shouldAcceptAppLink(
   return now - prev.at >= windowMs;
 }
 
-/** "About us" / "about_us" / "About-Us" → "about-us" */
+/** "About us" / "about_us" / "Order Online!" → "about-us" / "about-us" / "order-online" */
 export function normalizeTabName(name: string): string {
   return String(name ?? '')
     .trim()
     .toLowerCase()
-    .replace(/[_]+/g, ' ')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-');
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 export function navItemChildren(item: NavItem | null | undefined): NavItem[] {
@@ -136,26 +135,19 @@ export function findNavTab(items: NavItem[] | null | undefined, name: string): N
   return null;
 }
 
-const ORDER_ROLE_NAMES = new Set([
-  'order',
-  'order-online',
-  'order-now',
-  'online-order',
-  'online-ordering',
-]);
-
-const VENUES_ROLE_NAMES = new Set(['venues', 'venue', 'our-venues', 'our-venue']);
+const ORDER_ROLE_NAMES = new Set(['order', 'order-online']);
+const VENUES_ROLE_NAMES = new Set(['venues', 'our-venues']);
 
 function tabNames(item: NavItem): string[] {
   return [item.id, item.label].map(normalizeTabName).filter(Boolean);
 }
 
-/** True when id/label is Order, Order Online, or a close variant — not Menu, Account, Venues. */
+/** True when id/label is Order or Order Online — not Menu, Account, Venues. */
 export function isOrderTab(item: NavItem | null | undefined): boolean {
   return !!item && tabNames(item).some((n) => ORDER_ROLE_NAMES.has(n));
 }
 
-/** True when id/label is Venues, Our Venues, or Our Venue — not Order Online. */
+/** True when id/label is Venues or Our Venues — not Order Online. */
 export function isVenuesTab(item: NavItem | null | undefined): boolean {
   return !!item && tabNames(item).some((n) => VENUES_ROLE_NAMES.has(n));
 }
@@ -171,25 +163,13 @@ export function findRoleTab(
   return null;
 }
 
-function configVenueCount(config?: Pick<AppConfig, 'venues'> | { venues?: unknown } | null): number {
-  const venues = config?.venues;
-  return Array.isArray(venues) ? venues.length : 0;
-}
-
 /**
- * Single vs multi venue: 2+ children on this Order/Venues group means multi.
- * If the group has no children, `config.venues.length >= 2` is the fallback
- * (live CMS payloads often leave `venues` empty and put rows on the group).
+ * Multi-venue only when this Order/Venues group has two or more children to
+ * pick from. `config.venues` is not a picker — an empty group with a long
+ * venues list still has nothing to show.
  */
-export function isMultiVenueTab(
-  item: NavItem | null | undefined,
-  config?: Pick<AppConfig, 'venues'> | { venues?: unknown } | null,
-): boolean {
-  if (!item) return false;
-  const kids = navItemChildren(item).length;
-  if (kids >= 2) return true;
-  if (kids === 1) return false;
-  return configVenueCount(config) >= 2;
+export function isMultiVenueTab(item: NavItem | null | undefined): boolean {
+  return navItemChildren(item).length >= 2;
 }
 
 /**
@@ -212,28 +192,68 @@ export function navItemHref(item: NavItem | null | undefined): string {
   return String(item?.url || item?.route || '').trim();
 }
 
+function isVenuePageItem(item: NavItem | null | undefined): boolean {
+  const href = navItemHref(item);
+  if (!href || href === '/') return false;
+  if (isOrderingHref(href)) return false;
+  if (/^(tel:|mailto:|sms:)/i.test(href)) return false;
+  return !/^https?:\/\//i.test(href);
+}
+
+/** Drop group flags so go() opens the page instead of a sheet. */
+function asDirectTarget(item: NavItem): NavItem {
+  return { id: item.id, label: item.label, route: item.route, url: item.url };
+}
+
+function venuePageFallback(tab: NavItem): NavItem | null {
+  const pageChild = navItemChildren(tab).find(isVenuePageItem);
+  if (pageChild) return pageChild;
+  if (isVenuePageItem(tab)) return isGroupNavItem(tab) ? asDirectTarget(tab) : tab;
+  return null;
+}
+
+function resolveOrderTarget(tab: NavItem): NavItem {
+  const kids = navItemChildren(tab);
+  if (kids.length >= 2) return tab;
+  if (kids.length === 1 && isOrderingHref(navItemHref(kids[0]))) return kids[0];
+  return tab;
+}
+
+function resolveVenuesTarget(tab: NavItem): NavItem | null {
+  const kids = navItemChildren(tab);
+  if (kids.length >= 2) return tab;
+  if (kids.length === 1) {
+    const child = kids[0];
+    if (!isOrderingHref(navItemHref(child)) && navItemHref(child)) return child;
+    return venuePageFallback(tab) ?? tab;
+  }
+  if (isOrderingHref(navItemHref(tab))) return venuePageFallback(tab);
+  return tab;
+}
+
 /**
  * Item TabBar.go() should receive for an eatapp:// homepage link.
  *
  * Short aliases (`open/order`, `open/venues`) match Order / Order Online and
  * Venues / Our Venues, then apply the Fenwick rule: a group with two or more
  * children opens the bottom-nav sheet; otherwise the only listing/page opens
- * directly. `open/tab/<name>` stays an exact id/label match and is unchanged.
+ * directly. The venues role never returns an ordering URL.
+ * `open/tab/<name>` stays an exact id/label match and is unchanged.
  */
 export function resolveAppLinkTarget(
   url: string,
   items: NavItem[] | null | undefined,
-  config?: Pick<AppConfig, 'venues'> | { venues?: unknown } | null,
+  _config?: Pick<AppConfig, 'venues'> | { venues?: unknown } | null,
 ): NavItem | null {
   const action = parseAppLink(url);
   if (action.type !== 'open-tab') return null;
   if (action.role) {
     const tab = findRoleTab(items, action.role);
     if (!tab) return null;
-    if (isMultiVenueTab(tab, config)) return tab;
-    const kids = navItemChildren(tab);
-    if (kids.length === 1) return kids[0];
-    return tab;
+    if (action.role === 'order') return resolveOrderTarget(tab);
+    const dest = resolveVenuesTarget(tab);
+    if (dest && !isGroupNavItem(dest) && isOrderingHref(navItemHref(dest))) return null;
+    return dest;
   }
   return findNavTab(items, action.name);
 }

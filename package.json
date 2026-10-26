@@ -15,7 +15,7 @@
     "eas-build-pre-install": "node scripts/fetch-config.js",
     "test": "jest --ci && tsx --test src/*.test.ts && node --test plugins/*.test.js && npm run check:nav-links -- scripts/nav-link-fixtures/fenwick-multi.json scripts/nav-link-fixtures/order-online-single.json scripts/nav-link-fixtures/order-online-multi.json",
     "check:nav-links": "tsx scripts/check-nav-links.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.scripts.json"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",

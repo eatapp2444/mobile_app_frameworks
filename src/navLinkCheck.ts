@@ -22,8 +22,8 @@ export type NavLinkReport = {
   checks: NavLinkCheck[];
 };
 
-const ORDER_CTA = new Set(['order', 'order-online', 'order-now', 'online-order', 'online-ordering']);
-const VENUES_CTA = new Set(['venues', 'venue', 'our-venues', 'our-venue']);
+const ORDER_CTA = new Set(['order', 'order-online']);
+const VENUES_CTA = new Set(['venues', 'our-venues']);
 
 function unwrapConfig(input: unknown): AppConfig {
   const raw = (input ?? {}) as Record<string, unknown>;
