@@ -233,16 +233,18 @@ Order Online button `eatapp://open/order`; venue rows `eatapp://open/venues`.
 
 | href | Behaviour |
 | --- | --- |
-| `eatapp://open/tab/<name>` | Same as tapping that tab. If the tab is a **group** (`isGroup` / `action: "group"` with sub-items), its sheet opens (e.g. Venues → Hahndorf / Murray Bridge / Mount Barker). If it is not a group, that tab is selected. `<name>` matches the tab **id** or **label**, case-insensitive (`Venues`, `venues`, `about-us`). Query strings and hashes are ignored (`eatapp://open/tab/order?x=1`). |
+| `eatapp://open/tab/<name>` | Same as tapping that tab. If the tab is a **group** (`isGroup` / `action: "group"` with sub-items), its sheet opens (e.g. Venues → Hahndorf / Murray Bridge / Mount Barker). If it is not a group, that tab is selected. `<name>` matches the tab **id** or **label**, case-insensitive (`Venues`, `venues`, `about-us`). HtmlView resolves against the same catalog TabBar builds, including the synthetic **More** overflow tab (`eatapp://open/tab/more`) when items exceed `maxVisible`; More wins over a child/page slugged `more`. If no tab in that catalog matches, the name is resolved as a nested page (same as `open/page`). Query strings and hashes are ignored (`eatapp://open/tab/order?x=1`). |
 | `eatapp://open/order` | Order / Order Online tab. Single-venue → that venue's online ordering listing. Multi-venue → the order sheet. |
 | `eatapp://open/venues` | Venues / Our Venues tab. Single-venue → that venue's page. Multi-venue → the venues sheet. Never an ordering URL. |
-| any other `eatapp://…` | Ignored. The WebView does not load the URL. Unknown tab names are also no-ops. |
+| `eatapp://open/page/<ref>` | Nested Page Builder page (Venues children, etc.). `<ref>` is a route slug (`balgowlah` / `/balgowlah`) or hosted page id (nav `value` / `pageId`, or `pages[].id`). Never opens a group sheet. |
+| any other `eatapp://…` | Ignored. The WebView does not load the URL. Unknown tab/page names are also no-ops. |
 
 Example for the homepage HTML:
 
 ```html
 <a href="eatapp://open/order">Order now</a>
 <a href="eatapp://open/venues">Our venues</a>
+<a href="eatapp://open/page/balgowlah">Balgowlah</a>
 ```
 
 Apps that never use these hrefs are unchanged. Do not use `https://…` if you

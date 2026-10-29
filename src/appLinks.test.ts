@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  findNavPage,
   findNavTab,
   findRoleTab,
   hasGroupFlag,
@@ -10,6 +11,7 @@ import {
   isOrderingHref,
   isTabItemActive,
   moreNavItem,
+  navLinkCatalog,
   normalizeTabName,
   parseAppLink,
   resolveAppLinkTarget,
@@ -102,6 +104,12 @@ test('parseAppLink understands open/order, open/venues and open/tab/<name>', () 
     type: 'open-tab',
     name: 'Murray Bridge',
   });
+  assert.deepEqual(parseAppLink('eatapp://open/page/balgowlah'), { type: 'open-page', target: 'balgowlah' });
+  assert.deepEqual(parseAppLink('eatapp://open/page/e75f196a-4fff-4017-b25b-e36136851763'), {
+    type: 'open-page',
+    target: 'e75f196a-4fff-4017-b25b-e36136851763',
+  });
+  assert.deepEqual(parseAppLink('eatapp://open/page/'), { type: 'ignore' });
 });
 
 test('unknown eatapp actions and non-app URLs are ignored', () => {
@@ -129,6 +137,7 @@ test('findNavTab matches id or label; sheetFromNavItem matches a tab tap', () =>
   assert.equal(findNavTab(fenwickNav, 'about-us')?.label, 'About us');
   assert.equal(findNavTab(fenwickNav, 'missing'), null);
   assert.equal(findNavTab(fenwickNav, 'Hahndorf'), null); // submenu child is not a tab
+  assert.equal(findNavPage(fenwickNav, 'hahndorf')?.route, '/hahndorf');
 
   assert.equal(isGroupNavItem(order), true);
   assert.equal(isGroupNavItem(findNavTab(fenwickNav, 'venues')), true);
@@ -207,6 +216,19 @@ test('More overflow is addressable as eatapp://open/tab/more', () => {
     ['About us'],
   );
   assert.equal(moreNavItem([]), null);
+});
+
+test('navLinkCatalog More wins over a page slugged more', () => {
+  const items: NavItem[] = [
+    ...fenwickNav,
+    { id: 'account', label: 'Account', route: '/account' },
+  ];
+  const pages = [{ slug: 'more', title: 'More page' }];
+  assert.equal(resolveAppLinkTarget('eatapp://open/tab/more', items, { pages })?.route, '/more');
+  const catalog = navLinkCatalog(items, { maxVisible: 4 });
+  assert.equal(resolveAppLinkTarget('eatapp://open/tab/more', catalog, { pages })?.id, '__more');
+  assert.equal(isGroupNavItem(resolveAppLinkTarget('eatapp://open/tab/more', catalog, { pages })), true);
+  assert.equal(resolveAppLinkTarget('eatapp://open/page/more', catalog, { pages })?.route, '/more');
 });
 
 test('normalizeTabName collapses spaces, underscores, and punctuation', () => {
@@ -385,6 +407,34 @@ test('unknown tab names are unresolved; open/tab stays exact', () => {
   assert.equal(resolveAppLinkTarget('eatapp://open/tab/Order Online', orderOnlineNav)?.label, 'Order Online');
   assert.equal(resolveAppLinkTarget('eatapp://open/tab/venues', fenwickNav)?.label, 'Venues');
   assert.equal(resolveAppLinkTarget('eatapp://open/tab/about-us', fenwickNav)?.id, 'about-us');
+});
+
+test('open/page and open/tab fallback resolve nested venue children by slug or page id', () => {
+  const pageId = 'e75f196a-4fff-4017-b25b-e36136851763';
+  const phulkari: NavItem[] = [
+    { id: 'home', label: 'Home', route: '/' },
+    { id: 'order', label: 'Order', route: '/order' },
+    {
+      id: 'venues',
+      label: 'Venues',
+      isGroup: true,
+      action: 'group',
+      children: [
+        { id: 'n-balgowlah', label: 'Balgowlah', route: '/balgowlah', value: pageId },
+        { id: 'n-mosman', label: 'Mosman', route: '/mosman', value: '11111111-2222-3333-4444-555555555555' },
+      ],
+    },
+  ];
+  const pages = [{ id: pageId, slug: 'balgowlah', title: 'Balgowlah' }];
+
+  assert.equal(resolveAppLinkTarget('eatapp://open/page/balgowlah', phulkari, { pages })?.route, '/balgowlah');
+  assert.equal(resolveAppLinkTarget(`eatapp://open/page/${pageId}`, phulkari, { pages })?.route, '/balgowlah');
+  assert.equal(resolveAppLinkTarget('eatapp://open/page/mosman', phulkari)?.route, '/mosman');
+  assert.equal(isGroupNavItem(resolveAppLinkTarget('eatapp://open/tab/venues', phulkari)), true);
+  assert.equal(resolveAppLinkTarget('eatapp://open/tab/balgowlah', phulkari)?.route, '/balgowlah');
+  assert.equal(resolveAppLinkTarget('eatapp://open/page/venues', phulkari), null);
+  assert.equal(resolveAppLinkTarget('eatapp://open/page/hahndorf', fenwickNav)?.route, '/hahndorf');
+  assert.equal(resolveAppLinkTarget('eatapp://open/tab/hahndorf', fenwickNav)?.route, '/hahndorf');
 });
 
 test('venues role never resolves to an ordering URL', () => {

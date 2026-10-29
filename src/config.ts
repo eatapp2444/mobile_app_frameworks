@@ -19,6 +19,9 @@ export type NavItem = {
   route?: string | null;
   url?: string | null;
   action?: string;
+  /** Hosted page id when this row is a Page Builder page (CMS `value`). */
+  value?: string | null;
+  pageId?: string | null;
   /** Builder group tab (Order, Venues, More). Equivalent to `action: 'group'`. */
   isGroup?: boolean;
   /** Submenu rows when this item is a group (`isGroup` / `action: 'group'`). Same as `submenu.items`. */
@@ -62,7 +65,7 @@ export type AppConfig = {
   home?: { layout?: string; html?: string; sections?: any[]; blank?: BlankHome };
   /** Present on live CMS payloads; often `[]` with venue rows on the nav group instead. */
   venues?: unknown[];
-  pages?: Array<{ slug: string; title: string; type: string; html?: string; url?: string }>;
+  pages?: Array<{ id?: string; slug: string; title: string; type: string; html?: string; url?: string }>;
   notifications?: { enabled?: boolean; source?: string; history?: NotificationItem[] };
   onesignal?: { appId?: string };
   permissions?: Record<string, any>;

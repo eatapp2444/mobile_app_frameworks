@@ -8,6 +8,7 @@ import {
   hasGroupFlag,
   isTabItemActive,
   moreNavItem,
+  navLinkCatalog,
   sheetFromNavItem,
   type NavSheet,
 } from './appLinks';
@@ -50,7 +51,7 @@ export function TabBar() {
   const goRef = useRef(go);
   goRef.current = go;
   const catalogRef = useRef<NavItem[]>(all);
-  catalogRef.current = more ? [...all, more] : all;
+  catalogRef.current = navLinkCatalog(all, nav);
 
   useEffect(
     () =>

@@ -8,6 +8,7 @@ export type AppLinkRole = 'order' | 'venues';
 
 export type AppLinkAction =
   | { type: 'open-tab'; name: string; role?: AppLinkRole }
+  | { type: 'open-page'; target: string }
   | { type: 'ignore' };
 
 export type NavSheet = { title: string; items: NavItem[] };
@@ -22,6 +23,7 @@ export function isAppLink(url: string): boolean {
  *   eatapp://open/tab/<name>     → same as tapping that tab (sheet if it is a group)
  *   eatapp://open/order          → Order / Order Online tab (single- vs multi-venue)
  *   eatapp://open/venues         → Venues / Our Venues tab (single- vs multi-venue)
+ *   eatapp://open/page/<ref>     → nested Page Builder page (route slug or page id)
  *   anything else eatapp://…     → ignore
  *
  * `?query` and `#hash` are stripped so `eatapp://open/tab/order?x=1` still works.
@@ -50,6 +52,12 @@ export function parseAppLink(url: string): AppLinkAction {
     const name = parts.slice(2).join('/');
     if (!name) return { type: 'ignore' };
     return { type: 'open-tab', name };
+  }
+
+  if (parts[1].toLowerCase() === 'page') {
+    const target = parts.slice(2).join('/');
+    if (!target) return { type: 'ignore' };
+    return { type: 'open-page', target };
   }
 
   // Short aliases apply the Fenwick single- vs multi-venue rule.
@@ -192,6 +200,80 @@ export function navItemHref(item: NavItem | null | undefined): string {
   return String(item?.url || item?.route || '').trim();
 }
 
+function isInternalPageHref(href?: string | null): boolean {
+  const raw = String(href ?? '').trim();
+  if (!raw || raw === '/') return false;
+  if (/^(tel:|mailto:|sms:)/i.test(raw)) return false;
+  if (/^https?:\/\//i.test(raw)) return false;
+  return true;
+}
+
+function flattenNav(items: NavItem[] | null | undefined): NavItem[] {
+  const out: NavItem[] = [];
+  const walk = (nodes: NavItem[]) => {
+    for (const item of nodes) {
+      if (!item) continue;
+      out.push(item);
+      walk(navItemChildren(item));
+    }
+  };
+  walk(items ?? []);
+  return out;
+}
+
+function pageIdOf(item: NavItem): string {
+  return String(item.value || item.pageId || '').trim();
+}
+
+function asPageTarget(item: NavItem): NavItem {
+  return { id: item.id, label: item.label, route: item.route, url: item.url };
+}
+
+function syntheticPage(page: { id?: string; slug?: string; title?: string }): NavItem {
+  const slug = String(page.slug ?? '').replace(/^\//, '');
+  return {
+    id: page.id || slug,
+    label: page.title || slug,
+    route: slug ? `/${slug}` : '/',
+  };
+}
+
+/**
+ * Nested Page Builder page. Never returns a group sheet.
+ * Match order: nav value/pageId, internal route slug, pages[].id / slug, then
+ * id/label of a non-group item that has an internal page route.
+ */
+export function findNavPage(
+  items: NavItem[] | null | undefined,
+  target: string,
+  pages?: Array<{ id?: string; slug?: string; title?: string }> | null,
+): NavItem | null {
+  const want = normalizeTabName(target);
+  if (!want) return null;
+
+  const pageItems = flattenNav(items).filter(
+    (item) => !isGroupNavItem(item) && isInternalPageHref(navItemHref(item)),
+  );
+
+  for (const item of pageItems) {
+    if (normalizeTabName(pageIdOf(item)) === want) return asPageTarget(item);
+  }
+  for (const item of pageItems) {
+    if (normalizeTabName(navItemHref(item)) === want) return asPageTarget(item);
+  }
+  for (const page of pages ?? []) {
+    if (normalizeTabName(page.id ?? '') === want || normalizeTabName(page.slug ?? '') === want) {
+      return syntheticPage(page);
+    }
+  }
+  for (const item of pageItems) {
+    if (normalizeTabName(item.id) === want || normalizeTabName(item.label) === want) {
+      return asPageTarget(item);
+    }
+  }
+  return null;
+}
+
 function isVenuePageItem(item: NavItem | null | undefined): boolean {
   const href = navItemHref(item);
   if (!href || href === '/') return false;
@@ -261,15 +343,21 @@ function resolveVenuesTarget(tab: NavItem): NavItem | null {
  * Venues / Our Venues, then apply the Fenwick rule: a group with two or more
  * children opens the bottom-nav sheet; otherwise the only listing/page opens
  * directly. The venues role never returns an ordering URL.
- * `open/tab/<name>` stays an exact id/label match and is unchanged.
+ * `open/tab/<name>` is an exact top-level id/label match; if none, it falls
+ * through to `open/page` (nested children / hosted pages).
  */
 export function resolveAppLinkTarget(
   url: string,
   items: NavItem[] | null | undefined,
-  _config?: Pick<AppConfig, 'venues'> | { venues?: unknown } | null,
+  config?: (Pick<AppConfig, 'venues'> | { venues?: unknown }) & {
+    pages?: Array<{ id?: string; slug?: string; title?: string }> | null;
+  } | null,
 ): NavItem | null {
   const action = parseAppLink(url);
-  if (action.type !== 'open-tab') return null;
+  if (action.type === 'ignore') return null;
+  if (action.type === 'open-page') {
+    return findNavPage(items, action.target, config?.pages);
+  }
   if (action.role) {
     const tab = findRoleTab(items, action.role);
     if (!tab) return null;
@@ -279,7 +367,9 @@ export function resolveAppLinkTarget(
     if (dest && !isGroupNavItem(dest) && isOrderingHref(navItemHref(dest))) return null;
     return dest;
   }
-  return findNavTab(items, action.name);
+  const tab = findNavTab(items, action.name);
+  if (tab) return tab;
+  return findNavPage(items, action.name, config?.pages);
 }
 
 export function moreNavItem(
@@ -289,4 +379,20 @@ export function moreNavItem(
 ): NavItem | null {
   if (!overflow.length) return null;
   return { id: '__more', label, icon, isGroup: true, children: overflow };
+}
+
+/**
+ * Same catalog TabBar uses for `activateTab`: top-level items plus the
+ * synthetic More tab when overflow exists. Pass this to `resolveAppLinkTarget`
+ * so `eatapp://open/tab/more` is More, not a child/page slugged `more`.
+ */
+export function navLinkCatalog(
+  items: NavItem[] | null | undefined,
+  nav?: { maxVisible?: unknown; moreLabel?: string; moreIcon?: string } | null,
+): NavItem[] {
+  const all = (items ?? []).filter(Boolean);
+  const maxVisible = Math.max(2, Math.min(Number(nav?.maxVisible ?? 4), 5));
+  const overflow = all.slice(maxVisible);
+  const more = moreNavItem(overflow, nav?.moreLabel ?? 'More', nav?.moreIcon ?? 'MoreHorizontal');
+  return more ? [...all, more] : all;
 }

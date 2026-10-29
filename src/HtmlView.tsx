@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
-import { parseAppLink, resolveAppLinkTarget, shouldAcceptAppLink } from './appLinks';
+import { navLinkCatalog, parseAppLink, resolveAppLinkTarget, shouldAcceptAppLink } from './appLinks';
 import { useConfig, useTheme } from './ConfigProvider';
 import {
   CMS_HTML_CACHE_MODE,
@@ -115,17 +115,14 @@ export const HtmlView = React.memo(function HtmlView({
   const runAppLink = useCallback(
     (url: string) => {
       const action = parseAppLink(url);
-      if (action.type !== 'open-tab') return;
+      if (action.type === 'ignore') return;
       const now = Date.now();
       if (!shouldAcceptAppLink(lastAppLink.current, url, now)) return;
       lastAppLink.current = { url, at: now };
-      if (action.role) {
-        const item = resolveAppLinkTarget(url, config?.navigation?.items, config);
-        if (!item) return;
-        activateTab(item);
-        return;
-      }
-      activateTab(action.name);
+      const catalog = navLinkCatalog(config?.navigation?.items, config?.navigation);
+      const item = resolveAppLinkTarget(url, catalog, config);
+      if (!item) return;
+      activateTab(item);
     },
     [activateTab, config],
   );
