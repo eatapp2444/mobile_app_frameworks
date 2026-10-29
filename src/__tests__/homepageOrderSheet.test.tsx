@@ -77,6 +77,7 @@ jest.mock('../config', () => {
           },
         },
         { id: 'about-us', label: 'About us', icon: 'Info', route: '/about-us' },
+        { id: 'account', label: 'Account', icon: 'User', route: '/account' },
       ],
     },
     home: { html: '<a href="eatapp://open/order">Order now</a>' },
@@ -85,6 +86,8 @@ jest.mock('../config', () => {
       { slug: 'murray-bridge', title: 'Murray Bridge', type: 'html', html: '<p>Murray Bridge</p>' },
       { slug: 'mount-barker', title: 'Mount Barker', type: 'html', html: '<p>Mount Barker</p>' },
       { slug: 'about-us', title: 'About us', type: 'html', html: '<p>About</p>' },
+      { slug: 'more', title: 'More page', type: 'html', html: '<p>More page</p>' },
+      { slug: 'account', title: 'Account', type: 'html', html: '<p>Account</p>' },
     ],
   };
   return {
@@ -265,6 +268,62 @@ describe('homepage eatapp://open/order', () => {
     expect(allowed).toBe(false);
     expect(collectText(tree.root)).not.toContain('Hahndorf');
     expect(mockRouter.replace).not.toHaveBeenCalled();
+  });
+
+  it('eatapp://open/page/hahndorf opens the nested venue page', async () => {
+    const tree = await renderHome();
+    await act(async () => {
+      expect(fireHtmlLink('eatapp://open/page/hahndorf')).toBe(false);
+    });
+    expect(mockRouter.replace).toHaveBeenCalledWith({
+      pathname: '/p/[slug]',
+      params: { slug: 'hahndorf' },
+    });
+    expect(collectText(tree.root)).not.toContain('Murray Bridge');
+  });
+
+  it('eatapp://open/tab/more opens the More overflow sheet', async () => {
+    const tree = await renderHome();
+    await act(async () => {
+      expect(fireHtmlLink('eatapp://open/tab/more')).toBe(false);
+    });
+    expect(mockRouter.replace).not.toHaveBeenCalled();
+    expect(mockRouter.push).not.toHaveBeenCalled();
+    expect(collectText(tree.root.findByProps({ testID: 'nav-sheet-title' }))).toBe('More');
+    expect(collectText(tree.root)).toContain('Account');
+  });
+
+  it('eatapp://open/tab/more is not hijacked by a page slugged more', async () => {
+    const tree = await renderHome();
+    await act(async () => {
+      expect(fireHtmlLink('eatapp://open/tab/more')).toBe(false);
+    });
+    expect(mockRouter.replace).not.toHaveBeenCalled();
+    expect(mockRouter.push).not.toHaveBeenCalled();
+    expect(collectText(tree.root.findByProps({ testID: 'nav-sheet-title' }))).toBe('More');
+    expect(collectText(tree.root)).not.toContain('More page');
+  });
+
+  it('eatapp://open/page/more still opens the /more page', async () => {
+    await renderHome();
+    await act(async () => {
+      expect(fireHtmlLink('eatapp://open/page/more')).toBe(false);
+    });
+    expect(mockRouter.replace).toHaveBeenCalledWith({
+      pathname: '/p/[slug]',
+      params: { slug: 'more' },
+    });
+  });
+
+  it('eatapp://open/tab/hahndorf falls through to the venue page when it is not a top-level tab', async () => {
+    await renderHome();
+    await act(async () => {
+      expect(fireHtmlLink('eatapp://open/tab/hahndorf')).toBe(false);
+    });
+    expect(mockRouter.replace).toHaveBeenCalledWith({
+      pathname: '/p/[slug]',
+      params: { slug: 'hahndorf' },
+    });
   });
 
   it('does not double-activate when shouldStartLoad and postMessage both fire', async () => {

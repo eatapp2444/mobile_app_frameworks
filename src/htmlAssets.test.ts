@@ -75,6 +75,8 @@ test('iOS initial load of baseUrl is allowed; later homepage taps go to /web; CM
     'block',
   );
   assert.equal(htmlViewNavDecision('eatapp://open/venues', base, { navigationType: 'click' }), 'app');
+  assert.equal(htmlViewNavDecision('eatapp://open/page/balgowlah', base, { navigationType: 'click' }), 'app');
+  assert.equal(htmlViewNavDecision('eatapp://open/page/', base, { navigationType: 'click' }), 'block');
   assert.equal(htmlViewNavDecision('eatapp://launch/nuke', base, { navigationType: 'click' }), 'block');
   assert.equal(htmlViewNavDecision('eatapp://open', base), 'block');
   assert.equal(htmlViewNavDecision('eatapp://open/tab/', base), 'block');
