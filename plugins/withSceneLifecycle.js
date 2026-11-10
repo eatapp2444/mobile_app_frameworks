@@ -30,8 +30,79 @@
  * here would duplicate ExpoReactNativeFactory / RCTAppDependencyProvider /
  * bindReactNativeFactory and can start RN twice. We NSLog + preconditionFailure
  * so Release builds crash with that name instead of showing a blank window.
+ *
+ * A new UIWindow has a nil background, which UIKit composites as black. That
+ * window replaces the launch storyboard as soon as React Native starts, so a
+ * white splash flashes black for a frame. SceneDelegate sets
+ * window.backgroundColor to the expo-splash-screen / splash backgroundColor
+ * before startReactNative (white if none is configured).
  */
 const MARKER = '// scene lifecycle (withSceneLifecycle.js)';
+const DEFAULT_WINDOW_BACKGROUND = '#FFFFFF';
+
+function pluginName(entry) {
+  if (typeof entry === 'string') return entry;
+  if (Array.isArray(entry)) return entry[0];
+  return '';
+}
+
+function pluginProps(entry) {
+  return Array.isArray(entry) && entry[1] && typeof entry[1] === 'object' ? entry[1] : null;
+}
+
+function normalizeHexColor(input) {
+  if (typeof input !== 'string') return null;
+  let hex = input.trim();
+  if (hex.charAt(0) === '#') hex = hex.slice(1);
+  if (!/^[0-9A-Fa-f]+$/.test(hex)) return null;
+  if (hex.length === 3) {
+    hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+  }
+  if (hex.length !== 6) return null;
+  return '#' + hex.toUpperCase();
+}
+
+function resolveSplashBackgroundColor(config, props) {
+  const fromProps = normalizeHexColor(props && props.backgroundColor);
+  if (fromProps) return fromProps;
+
+  const plugins = (config && config.plugins) || [];
+  for (let i = 0; i < plugins.length; i++) {
+    const name = String(pluginName(plugins[i]) || '');
+    if (name.indexOf('expo-splash-screen') === -1) continue;
+    const splashProps = pluginProps(plugins[i]);
+    const fromPlugin = normalizeHexColor(splashProps && splashProps.backgroundColor);
+    if (fromPlugin) return fromPlugin;
+  }
+
+  const splash =
+    (config && config.splash && config.splash.backgroundColor) ||
+    (config && config.ios && config.ios.splash && config.ios.splash.backgroundColor);
+  return normalizeHexColor(splash) || DEFAULT_WINDOW_BACKGROUND;
+}
+
+function uiColorChannel(n) {
+  if (n === 255) return '1.0';
+  if (n === 0) return '0.0';
+  return n + '.0 / 255.0';
+}
+
+function uiColorLiteral(hex) {
+  const normalized = normalizeHexColor(hex) || DEFAULT_WINDOW_BACKGROUND;
+  const h = normalized.slice(1);
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return (
+    'UIColor(red: ' +
+    uiColorChannel(r) +
+    ', green: ' +
+    uiColorChannel(g) +
+    ', blue: ' +
+    uiColorChannel(b) +
+    ', alpha: 1.0)'
+  );
+}
 
 // Exact block from Expo SDK 54.0.37's generated AppDelegate.swift
 // (captured by `npx expo prebuild --platform ios --clean --no-install`).
@@ -47,7 +118,9 @@ const WINDOW_BLOCK =
 const WINDOW_REPLACEMENT =
   '    // Window and React Native start in SceneDelegate (UIKit scene lifecycle).\n';
 
-const SCENE_DELEGATE = `
+function sceneDelegateSource(backgroundColor) {
+  const uiColor = uiColorLiteral(backgroundColor);
+  return `
 ${MARKER}
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
   var window: UIWindow?
@@ -91,6 +164,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     let window = UIWindow(windowScene: windowScene)
+    // UIWindow defaults to a nil (black) background. Paint it before RN starts
+    // so the first frame matches the launch storyboard instead of flashing.
+    window.backgroundColor = ${uiColor}
     self.window = window
     appDelegate.window = window
     factory.startReactNative(
@@ -135,6 +211,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
   }
 }
 `;
+}
 
 const SCENE_MANIFEST = {
   UIApplicationSupportsMultipleScenes: false,
@@ -160,13 +237,13 @@ function missingBlockError(contents) {
   );
 }
 
-function patchAppDelegate(contents) {
+function patchAppDelegate(contents, backgroundColor) {
   const next = String(contents).replace(/\r\n/g, '\n');
   if (next.includes(MARKER)) return next;
   if (!next.includes(WINDOW_BLOCK)) {
     throw missingBlockError(next);
   }
-  return next.replace(WINDOW_BLOCK, WINDOW_REPLACEMENT) + SCENE_DELEGATE;
+  return next.replace(WINDOW_BLOCK, WINDOW_REPLACEMENT) + sceneDelegateSource(backgroundColor);
 }
 
 function applySceneManifest(plist) {
@@ -175,8 +252,9 @@ function applySceneManifest(plist) {
   return next;
 }
 
-function withSceneLifecycle(config) {
+function withSceneLifecycle(config, props) {
   const { withAppDelegate, withInfoPlist } = require('expo/config-plugins');
+  const backgroundColor = resolveSplashBackgroundColor(config, props);
 
   config = withInfoPlist(config, (mod) => {
     mod.modResults = applySceneManifest(mod.modResults);
@@ -187,7 +265,7 @@ function withSceneLifecycle(config) {
     if (mod.modResults.language !== 'swift') {
       throw new Error('withSceneLifecycle expects a Swift AppDelegate (Expo SDK 54 template).');
     }
-    mod.modResults.contents = patchAppDelegate(mod.modResults.contents);
+    mod.modResults.contents = patchAppDelegate(mod.modResults.contents, backgroundColor);
     return mod;
   });
 }
@@ -198,3 +276,7 @@ module.exports.applySceneManifest = applySceneManifest;
 module.exports.WINDOW_BLOCK = WINDOW_BLOCK;
 module.exports.MARKER = MARKER;
 module.exports.SCENE_MANIFEST = SCENE_MANIFEST;
+module.exports.DEFAULT_WINDOW_BACKGROUND = DEFAULT_WINDOW_BACKGROUND;
+module.exports.normalizeHexColor = normalizeHexColor;
+module.exports.resolveSplashBackgroundColor = resolveSplashBackgroundColor;
+module.exports.uiColorLiteral = uiColorLiteral;

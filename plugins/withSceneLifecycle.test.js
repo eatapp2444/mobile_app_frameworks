@@ -6,8 +6,12 @@ const {
   MARKER,
   WINDOW_BLOCK,
   SCENE_MANIFEST,
+  DEFAULT_WINDOW_BACKGROUND,
   applySceneManifest,
   patchAppDelegate,
+  normalizeHexColor,
+  resolveSplashBackgroundColor,
+  uiColorLiteral,
 } = require('./withSceneLifecycle');
 
 const FIXTURE = path.join(__dirname, '__fixtures__/sdk54-AppDelegate.swift');
@@ -50,6 +54,84 @@ test('patchAppDelegate moves the window onto SceneDelegate and keeps linking', (
     patched,
     /willConnectTo session: UISceneSession[\s\S]*UIWindow\(windowScene: windowScene\)[\s\S]*startReactNative/,
   );
+});
+
+function windowConnectSnippet(patched) {
+  const start = patched.indexOf('let window = UIWindow(windowScene: windowScene)');
+  const end = patched.indexOf('factory.startReactNative', start);
+  assert.ok(start >= 0, 'expected SceneDelegate to create UIWindow(windowScene:)');
+  assert.ok(end > start, 'expected startReactNative after UIWindow creation');
+  return patched.slice(start, end);
+}
+
+const WHITE_UICOLOR = 'UIColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)';
+const BLACK_UICOLOR = 'UIColor(red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0)';
+
+test('SceneDelegate paints the window before RN starts; default is white not black', () => {
+  const patched = patchAppDelegate(loadSdk54AppDelegate());
+  const snippet = windowConnectSnippet(patched);
+
+  assert.match(snippet, /window\.backgroundColor = /);
+  assert.equal(snippet.includes(`window.backgroundColor = ${WHITE_UICOLOR}`), true);
+  assert.equal(snippet.includes('window.backgroundColor = .black'), false);
+  assert.equal(snippet.includes(`window.backgroundColor = ${BLACK_UICOLOR}`), false);
+  assert.equal(DEFAULT_WINDOW_BACKGROUND, '#FFFFFF');
+  assert.equal(uiColorLiteral(undefined), WHITE_UICOLOR);
+  assert.equal(uiColorLiteral('#FFFFFF'), WHITE_UICOLOR);
+});
+
+test('SceneDelegate window uses the configured splash hex, including Burg white', () => {
+  const burg = windowConnectSnippet(patchAppDelegate(loadSdk54AppDelegate(), '#FFFFFF'));
+  assert.match(burg, /window\.backgroundColor = UIColor\(red: 1\.0, green: 1\.0, blue: 1\.0, alpha: 1\.0\)/);
+
+  const custom = windowConnectSnippet(patchAppDelegate(loadSdk54AppDelegate(), '#1A2B3C'));
+  assert.match(
+    custom,
+    /window\.backgroundColor = UIColor\(red: 26\.0 \/ 255\.0, green: 43\.0 \/ 255\.0, blue: 60\.0 \/ 255\.0, alpha: 1\.0\)/,
+  );
+
+  const explicitBlack = windowConnectSnippet(patchAppDelegate(loadSdk54AppDelegate(), '#000000'));
+  assert.match(explicitBlack, /window\.backgroundColor = UIColor\(red: 0\.0, green: 0\.0, blue: 0\.0, alpha: 1\.0\)/);
+});
+
+test('resolveSplashBackgroundColor reads expo-splash-screen then splash, else white', () => {
+  assert.equal(normalizeHexColor('#fff'), '#FFFFFF');
+  assert.equal(normalizeHexColor('ffffff'), '#FFFFFF');
+  assert.equal(normalizeHexColor('#000000'), '#000000');
+  assert.equal(normalizeHexColor('nope'), null);
+
+  assert.equal(resolveSplashBackgroundColor({}), DEFAULT_WINDOW_BACKGROUND);
+  assert.equal(resolveSplashBackgroundColor({ plugins: ['expo-splash-screen'] }), DEFAULT_WINDOW_BACKGROUND);
+  assert.notEqual(resolveSplashBackgroundColor({}), '#000000');
+
+  assert.equal(
+    resolveSplashBackgroundColor({
+      plugins: [['expo-splash-screen', { backgroundColor: '#FFFFFF' }]],
+    }),
+    '#FFFFFF',
+  );
+  assert.equal(
+    resolveSplashBackgroundColor({
+      plugins: [['expo-splash-screen', { backgroundColor: '#112233' }]],
+    }),
+    '#112233',
+  );
+  assert.equal(
+    resolveSplashBackgroundColor({ splash: { backgroundColor: '#ABCDEF' } }),
+    '#ABCDEF',
+  );
+  assert.equal(
+    resolveSplashBackgroundColor({ ios: { splash: { backgroundColor: '#010203' } } }),
+    '#010203',
+  );
+  assert.equal(
+    resolveSplashBackgroundColor(
+      { plugins: [['expo-splash-screen', { backgroundColor: '#112233' }]] },
+      { backgroundColor: '#FFFFFF' },
+    ),
+    '#FFFFFF',
+  );
+  assert.equal(resolveSplashBackgroundColor({}, { backgroundColor: 'bogus' }), DEFAULT_WINDOW_BACKGROUND);
 });
 
 test('nil reactNativeFactory logs and preconditionFailure instead of a silent black screen', () => {
@@ -130,8 +212,18 @@ test('app.config.js registers withSceneLifecycle next to the pod floor', () => {
   const src = fs.readFileSync(path.join(__dirname, '../app.config.js'), 'utf8');
   assert.match(
     src,
-    /withIosPodDeploymentTarget[\s\S]*plugins\.push\('\.\/plugins\/withSceneLifecycle'\)/,
+    /withIosPodDeploymentTarget[\s\S]*plugins\.push\(\[\s*'\.\/plugins\/withSceneLifecycle'/,
   );
+  assert.match(
+    src,
+    /plugins\.push\(\[\s*'\.\/plugins\/withSceneLifecycle',\s*\{\s*backgroundColor: splashImage \? splashColor : splash\.backgroundColor/,
+  );
+});
+
+test('CI prebuild grep requires SceneDelegate window.backgroundColor', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../.github/workflows/ci.yml'), 'utf8');
+  assert.match(src, /grep -F 'window\.backgroundColor =' "\$APP_DELEGATE"/);
+  assert.match(src, /window\\\.backgroundColor = \\\.black/);
 });
 
 function packageRoot(name) {

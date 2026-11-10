@@ -68,3 +68,8 @@ jobs:
             exit 1
           fi
           grep -F 'preconditionFailure("withSceneLifecycle: reactNativeFactory is nil")' "$APP_DELEGATE"
+          grep -F 'window.backgroundColor =' "$APP_DELEGATE"
+          if grep -E 'window\.backgroundColor = \.black' "$APP_DELEGATE"; then
+            echo "SceneDelegate window.backgroundColor must not be .black"
+            exit 1
+          fi
