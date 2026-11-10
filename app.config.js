@@ -178,7 +178,13 @@ if (on('tracking')) {
 plugins.push(['./plugins/withIosPodDeploymentTarget', { deploymentTarget: IOS_DEPLOYMENT_TARGET }]);
 // Expo 54 still creates the window in AppDelegate. iOS 27 SDK requires UIScene
 // (expo/expo#46664). Remove this plugin after upgrading to SDK 58.
-plugins.push('./plugins/withSceneLifecycle');
+// Pass the splash colour so SceneDelegate's first-frame window matches the
+// launch storyboard instead of UIWindow's default black. If expo-splash-screen
+// is not used, the plugin defaults to white.
+plugins.push([
+  './plugins/withSceneLifecycle',
+  { backgroundColor: splashImage ? splashColor : splash.backgroundColor },
+]);
 
 module.exports = ({ config }) => {
   const base = config || {};
