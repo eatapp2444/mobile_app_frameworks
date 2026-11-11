@@ -8,7 +8,7 @@ jest.mock('expo-constants', () => ({
   expoConfig: {
     extra: {
       EATAPP_BUNDLE_ID: 'app.eatapp.demo',
-      EATAPP_API_URL: 'https://mobileforge-studio.lovable.app/api/public/apps/config',
+      EATAPP_API_URL: 'https://apps.eatapp.com.au/api/public/apps/config',
     },
   },
 }));

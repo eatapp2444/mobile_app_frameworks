@@ -7,7 +7,7 @@ const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, any>;
 
 export const BUNDLE_ID: string = extra.EATAPP_BUNDLE_ID ?? '';
 export const API_URL: string =
-  extra.EATAPP_API_URL ?? 'https://mobileforge-studio.lovable.app/api/public/apps/config';
+  extra.EATAPP_API_URL ?? 'https://apps.eatapp.com.au/api/public/apps/config';
 
 const CACHE_KEY = `eatapp:config:${BUNDLE_ID}`;
 const ETAG_KEY = `eatapp:etag:${BUNDLE_ID}`;
