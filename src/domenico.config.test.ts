@@ -4,7 +4,7 @@ import { resolveHtmlBaseUrl } from './htmlViewPolicy';
 import { isOverlayPath, panesFromConfig, shouldMountPane } from './tabPanes';
 
 const CONFIG_URL =
-  'https://mobileforge-studio.lovable.app/api/public/apps/config/com.domenicospizzapastaribs.clientapp';
+  'https://apps.eatapp.com.au/api/public/apps/config/com.domenicospizzapastaribs.clientapp';
 
 test('live Domenico config: eager nav panes, site baseUrl, unknown slug overlay', async (t) => {
   let payload: any;

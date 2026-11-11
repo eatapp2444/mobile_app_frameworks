@@ -290,7 +290,7 @@ module.exports = ({ config }) => {
       EATAPP_BUNDLE_ID: bundleId,
       EATAPP_APP_ID: cmsApp.id || env.EATAPP_APP_ID || null,
       EATAPP_API_URL:
-        env.EATAPP_API_URL || 'https://mobileforge-studio.lovable.app/api/public/apps/config',
+        env.EATAPP_API_URL || 'https://apps.eatapp.com.au/api/public/apps/config',
       EATAPP_ASSET_BASE_URL:
         env.EATAPP_ASSET_BASE_URL || 'https://mobileforge-studio.lovable.app',
       EATAPP_ONESIGNAL_APP_ID: oneSignalAppId || null,

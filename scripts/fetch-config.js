@@ -20,7 +20,7 @@ const http = require('http');
 const ROOT = path.resolve(__dirname, '..');
 const API_URL =
   process.env.EATAPP_API_URL ||
-  'https://mobileforge-studio.lovable.app/api/public/apps/config';
+  'https://apps.eatapp.com.au/api/public/apps/config';
 const BUNDLE_ID = process.env.EATAPP_BUNDLE_ID || '';
 // Never hard-fail: a missing/unreachable CMS config must not break `expo config`,
 // `expo install`, or Expo's GitHub build integration. The app falls back to the
