@@ -211,6 +211,42 @@ describe('homepage eatapp://open/order', () => {
     expect(mockRouter.push).not.toHaveBeenCalled();
   });
 
+  it('eatapp://open/tab/order opens the Order submenu sheet like tapping the tab', async () => {
+    const tree = await renderHome();
+    await act(async () => {
+      expect(fireHtmlLink('eatapp://open/tab/order')).toBe(false);
+    });
+    expect(mockRouter.push).not.toHaveBeenCalled();
+    expect(mockRouter.replace).not.toHaveBeenCalled();
+    expect(collectText(tree.root.findByProps({ testID: 'nav-sheet-title' }))).toBe('Order');
+    expect(collectText(tree.root)).toContain('Hahndorf');
+  });
+
+  it('https same-origin /tab/order (WebView-rewritten eatapp://) opens the Order sheet, not /web', async () => {
+    const tree = await renderHome();
+    await act(async () => {
+      expect(fireHtmlLink('https://localhost/tab/order')).toBe(false);
+    });
+    expect(mockRouter.push).not.toHaveBeenCalled();
+    expect(mockRouter.replace).not.toHaveBeenCalled();
+    expect(collectText(tree.root.findByProps({ testID: 'nav-sheet-title' }))).toBe('Order');
+  });
+
+  it('Android rewritten /tab/order without navigationType is blocked, not opened as /web', async () => {
+    await renderHome();
+    const web = mockWebViews[mockWebViews.length - 1];
+    let allowed: boolean | undefined;
+    await act(async () => {
+      allowed = web.props.onShouldStartLoadWithRequest({
+        url: 'https://localhost/tab/order',
+        isTopFrame: true,
+      });
+    });
+    expect(allowed).toBe(false);
+    expect(mockRouter.push).not.toHaveBeenCalled();
+    expect(mockRouter.replace).not.toHaveBeenCalled();
+  });
+
   it('eatapp://open/tab/venues opens the Venues submenu sheet when that tab has sub-items', async () => {
     const tree = await renderHome();
     await act(async () => {

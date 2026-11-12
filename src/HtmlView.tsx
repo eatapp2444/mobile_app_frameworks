@@ -16,6 +16,7 @@ import { navLinkCatalog, parseAppLink, resolveAppLinkTarget, shouldAcceptAppLink
 import { useConfig, useTheme } from './ConfigProvider';
 import {
   CMS_HTML_CACHE_MODE,
+  canonicalAppLink,
   htmlViewNavDecision,
   htmlViewSourceChanged,
   resolveHtmlBaseUrl,
@@ -52,14 +53,29 @@ function buildHtmlDocument(html: string, theme: ThemeTokens) {
 </style>
 <script>
 (function () {
+  function nearestLink(el) {
+    while (el && el !== document) {
+      if (el.tagName && String(el.tagName).toLowerCase() === 'a' && el.getAttribute) {
+        var href = el.getAttribute('href') || '';
+        if (href) return el;
+      }
+      el = el.parentNode || el.parentElement;
+    }
+    return null;
+  }
   document.addEventListener('click', function (e) {
     if (!e.isTrusted) return;
-    var a = e.target && e.target.closest && e.target.closest('a[href]');
+    var a = nearestLink(e.target);
+    if (!a && e.composedPath) {
+      var path = e.composedPath();
+      for (var i = 0; i < path.length && !a; i++) a = nearestLink(path[i]);
+    }
     if (!a) return;
     var href = a.getAttribute('href') || '';
     if (href.slice(0, 7).toLowerCase() !== 'eatapp:') return;
     e.preventDefault();
     e.stopPropagation();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
     if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
       window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'eatapp', url: href }));
     }
@@ -111,21 +127,6 @@ export const HtmlView = React.memo(function HtmlView({
   const { activateTab } = useTabActions();
   const cover = useRef(new Animated.Value(1)).current;
   const lastAppLink = useRef<{ url: string; at: number } | null>(null);
-
-  const runAppLink = useCallback(
-    (url: string) => {
-      const action = parseAppLink(url);
-      if (action.type === 'ignore') return;
-      const now = Date.now();
-      if (!shouldAcceptAppLink(lastAppLink.current, url, now)) return;
-      lastAppLink.current = { url, at: now };
-      const catalog = navLinkCatalog(config?.navigation?.items, config?.navigation);
-      const item = resolveAppLinkTarget(url, catalog, config);
-      if (!item) return;
-      activateTab(item);
-    },
-    [activateTab, config],
-  );
   const documentLoaded = useRef(false);
   const sourceRef = useRef<{ html: string; baseUrl: string } | null>(null);
   const webRef = useRef<WebView>(null);
@@ -139,6 +140,28 @@ export const HtmlView = React.memo(function HtmlView({
         siteUrl: (config?.app as { website?: string; url?: string } | undefined)?.website,
       }),
     [config],
+  );
+
+  const runAppLink = useCallback(
+    (url: string) => {
+      const link = canonicalAppLink(url, baseUrl) ?? url;
+      const action = parseAppLink(link);
+      if (action.type === 'ignore') return;
+      const now = Date.now();
+      if (!shouldAcceptAppLink(lastAppLink.current, link, now)) return;
+      lastAppLink.current = { url: link, at: now };
+      // open/tab/<name> is the same as tapping that tab (string lookup in TabBar).
+      // Role aliases (open/order, open/venues) still resolve to a possibly
+      // flattened listing via resolveAppLinkTarget.
+      if (action.type === 'open-tab' && !action.role) {
+        if (activateTab(action.name)) return;
+      }
+      const catalog = navLinkCatalog(config?.navigation?.items, config?.navigation);
+      const item = resolveAppLinkTarget(link, catalog, config);
+      if (!item) return;
+      activateTab(item);
+    },
+    [activateTab, baseUrl, config],
   );
   const doc = useMemo(() => buildHtmlDocument(html, theme), [html, theme]);
   const source = useMemo(() => ({ html: doc, baseUrl }), [doc, baseUrl]);
@@ -195,7 +218,7 @@ export const HtmlView = React.memo(function HtmlView({
           if (decision === 'allow') return true;
           if (decision === 'block') return false;
           if (decision === 'app') {
-            runAppLink(req.url);
+            runAppLink(canonicalAppLink(req.url, baseUrl) ?? req.url);
             return false;
           }
           if (decision === 'link') {
