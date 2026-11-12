@@ -409,6 +409,68 @@ test('unknown tab names are unresolved; open/tab stays exact', () => {
   assert.equal(resolveAppLinkTarget('eatapp://open/tab/about-us', fenwickNav)?.id, 'about-us');
 });
 
+test('Himalaya-shaped Order group: open/tab/order is the group sheet, not the first listing', () => {
+  const himalaya: NavItem[] = [
+    { id: 'home', label: 'Home', route: '/' },
+    {
+      id: '8631c53c-658a-4af0-aa80-5de62011bb02',
+      label: 'Order',
+      action: 'group',
+      route: null,
+      isGroup: true,
+      children: [
+        {
+          id: 'a5902c05-a96e-415e-867d-7d7b92013144',
+          label: 'Bella Vista',
+          action: 'external',
+          route: 'https://himalayarestaurant.orderexperience.net/6701f4f40e98f61f3e0d95be/menu',
+        },
+        {
+          id: '78bc97d4-3ed1-465b-8eea-9fba9b6a2d5c',
+          label: 'Granville',
+          action: 'external',
+          route: 'https://orders.eatapp.online/menu/himalaya-granville',
+        },
+        {
+          id: '93c3fc4a-b5e0-4f2f-9ac4-da91eac0affb',
+          label: 'Lakemba',
+          action: 'external',
+          route: 'https://himalayarestaurant.orderexperience.net/6ada6fb70fa9ca91a50683cf/menu',
+        },
+      ],
+      submenu: { style: 'drawer', title: 'Order' },
+    },
+    {
+      id: '1508b70a-f058-4f73-9d88-dd8c77285ed0',
+      label: 'Venues',
+      action: 'group',
+      route: null,
+      isGroup: true,
+      children: [
+        { id: 'v1', label: 'Bella Vista', action: 'tab', route: '/himalaya-restaurant-bella-vista' },
+        { id: 'v2', label: 'Granville', action: 'tab', route: '/himalaya-restaurant-granville' },
+      ],
+    },
+  ];
+
+  const byLabel = resolveAppLinkTarget('eatapp://open/tab/order', himalaya);
+  const byId = resolveAppLinkTarget(
+    'eatapp://open/tab/8631c53c-658a-4af0-aa80-5de62011bb02',
+    himalaya,
+  );
+  assert.equal(byLabel?.id, '8631c53c-658a-4af0-aa80-5de62011bb02');
+  assert.equal(byId?.id, byLabel?.id);
+  assert.equal(isGroupNavItem(byLabel), true);
+  assert.equal(isOrderingHref(byLabel?.route), false);
+  assert.deepEqual(sheetFromNavItem(byLabel)?.items.map((i) => i.label), [
+    'Bella Vista',
+    'Granville',
+    'Lakemba',
+  ]);
+  assert.equal(isGroupNavItem(resolveAppLinkTarget('eatapp://open/tab/venues', himalaya)), true);
+  assert.equal(isGroupNavItem(resolveAppLinkTarget('eatapp://open/order', himalaya)), true);
+});
+
 test('open/page and open/tab fallback resolve nested venue children by slug or page id', () => {
   const pageId = 'e75f196a-4fff-4017-b25b-e36136851763';
   const phulkari: NavItem[] = [

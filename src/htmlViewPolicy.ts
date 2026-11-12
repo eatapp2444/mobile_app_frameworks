@@ -102,6 +102,38 @@ export function isHtmlViewUserTap(opts: HtmlViewNavOpts = {}): boolean {
   return opts.navigationType === 'click' || opts.navigationType === 'formsubmit';
 }
 
+/**
+ * WKWebView / Android WebView with `source.html` + https `baseUrl` sometimes
+ * reports a tap on `eatapp://open/tab/order` as `https://<origin>/tab/order`
+ * (or `/open/tab/order`). Himalaya's WordPress then fuzzy-matches `/tab/order`
+ * and `/order` to an online-ordering page, which HtmlView would otherwise
+ * open as `/web`. Map those same-origin paths back to the eatapp:// action.
+ */
+export function rewrittenAppLink(url: string, baseUrl: string): string | null {
+  if (isAppLink(url)) return null;
+  try {
+    const u = new URL(url);
+    const b = new URL(baseUrl);
+    if ((u.protocol !== 'http:' && u.protocol !== 'https:') || u.origin !== b.origin) return null;
+    const parts = u.pathname.split('/').filter(Boolean);
+    let reconstructed: string | null = null;
+    if (parts[0]?.toLowerCase() === 'open' && parts.length >= 2) {
+      reconstructed = `eatapp://${parts.join('/')}`;
+    } else if (parts[0]?.toLowerCase() === 'tab' && parts[1]) {
+      reconstructed = `eatapp://open/tab/${parts.slice(1).join('/')}`;
+    }
+    if (!reconstructed || parseAppLink(reconstructed).type === 'ignore') return null;
+    return reconstructed;
+  } catch {
+    return null;
+  }
+}
+
+export function canonicalAppLink(url: string, baseUrl: string): string | null {
+  if (isAppLink(url)) return parseAppLink(url).type === 'ignore' ? null : url;
+  return rewrittenAppLink(url, baseUrl);
+}
+
 export function htmlViewNavDecision(
   url: string,
   baseUrl: string,
@@ -111,8 +143,14 @@ export function htmlViewNavDecision(
   // Custom in-app actions (eatapp://open/tab/<name>, eatapp://open/order,
   // eatapp://open/venues, eatapp://open/page/<route-or-pageId>).
   // Unknown / non-tap requests are blocked so the WebView never loads them.
+  // Same-origin /tab/<name> (WebView-rewritten eatapp://) must not fall through
+  // to https → /web — that is how Himalaya's Order button opened a listing.
   if (isAppLink(url)) {
     if (parseAppLink(url).type === 'ignore' || !isHtmlViewUserTap(opts)) return 'block';
+    return 'app';
+  }
+  if (rewrittenAppLink(url, baseUrl)) {
+    if (!isHtmlViewUserTap(opts)) return 'block';
     return 'app';
   }
   if (/^(tel:|mailto:|sms:)/i.test(url)) return 'link';

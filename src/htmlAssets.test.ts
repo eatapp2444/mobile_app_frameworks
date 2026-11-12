@@ -7,11 +7,13 @@ import {
   CMS_HTML_CACHE_MODE,
   DEFAULT_HTML_BASE_URL,
   URL_VIEW_CACHE_MODE,
+  canonicalAppLink,
   htmlViewNavDecision,
   htmlViewSourceChanged,
   isHtmlViewDocumentUrl,
   isHtmlViewUserTap,
   resolveHtmlBaseUrl,
+  rewrittenAppLink,
   shouldConsumeAndroidBack,
 } from './htmlViewPolicy';
 
@@ -69,6 +71,19 @@ test('iOS initial load of baseUrl is allowed; later homepage taps go to /web; CM
   assert.equal(htmlViewNavDecision('eatapp://open/tab/venues', base, { navigationType: 'click' }), 'app');
   assert.equal(htmlViewNavDecision('eatapp://open/tab/Venues', base, { navigationType: 'click' }), 'app');
   assert.equal(htmlViewNavDecision('eatapp://open/tab/order?x=1', base, { navigationType: 'click' }), 'app');
+  assert.equal(
+    htmlViewNavDecision('https://domenicospizza.com.au/tab/order', base, { navigationType: 'click' }),
+    'app',
+  );
+  assert.equal(htmlViewNavDecision('https://domenicospizza.com.au/tab/order', base), 'block');
+  assert.equal(
+    htmlViewNavDecision('https://domenicospizza.com.au/open/tab/order', base, { navigationType: 'click' }),
+    'app',
+  );
+  assert.equal(
+    htmlViewNavDecision('https://other.example/tab/order', base, { navigationType: 'click' }),
+    'web',
+  );
   assert.equal(htmlViewNavDecision('eatapp://open/order', base, { documentLoaded: true }), 'block');
   assert.equal(
     htmlViewNavDecision('eatapp://open/order', base, { documentLoaded: true, navigationType: 'other' }),
@@ -108,15 +123,36 @@ test('theme or baseUrl source rebuilds reset documentLoaded so iOS reload is all
   assert.doesNotMatch(src, /htmlRef\.current === html/);
 });
 
+test('same-origin /tab/<name> is a rewritten eatapp:// link, not /web', () => {
+  const base = 'https://himalayarestaurant.com.au/';
+  assert.equal(rewrittenAppLink('eatapp://open/tab/order', base), null);
+  assert.equal(rewrittenAppLink('https://himalayarestaurant.com.au/tab/order', base), 'eatapp://open/tab/order');
+  assert.equal(
+    rewrittenAppLink('https://himalayarestaurant.com.au/open/tab/order', base),
+    'eatapp://open/tab/order',
+  );
+  assert.equal(rewrittenAppLink('https://himalayarestaurant.com.au/open/order', base), 'eatapp://open/order');
+  assert.equal(rewrittenAppLink('https://himalayarestaurant.com.au/order', base), null);
+  assert.equal(rewrittenAppLink('https://other.example/tab/order', base), null);
+  assert.equal(canonicalAppLink('eatapp://open/tab/order', base), 'eatapp://open/tab/order');
+  assert.equal(
+    canonicalAppLink('https://himalayarestaurant.com.au/tab/venues', base),
+    'eatapp://open/tab/venues',
+  );
+});
+
 test('HtmlView intercepts eatapp:// as app actions and never pushes /web for them', () => {
   const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'HtmlView.tsx'), 'utf8');
   const htmlView = src.slice(0, src.indexOf('export function UrlView'));
   assert.match(htmlView, /decision === 'app'/);
-  assert.match(htmlView, /runAppLink\(req\.url\)/);
+  assert.match(htmlView, /runAppLink\(/);
+  assert.match(htmlView, /canonicalAppLink\(req\.url, baseUrl\)/);
   assert.match(htmlView, /shouldAcceptAppLink/);
   assert.match(htmlView, /payload\?\.type === 'eatapp'/);
   assert.match(htmlView, /href.slice\(0, 7\).toLowerCase\(\) !== 'eatapp:'/);
   assert.match(htmlView, /if \(!e\.isTrusted\) return;/);
+  assert.match(htmlView, /function nearestLink\(el\)/);
+  assert.match(htmlView, /activateTab\(action\.name\)/);
   const appBranch = htmlView.slice(htmlView.indexOf("decision === 'app'"), htmlView.indexOf("decision === 'link'"));
   assert.doesNotMatch(appBranch, /router\.push/);
   assert.doesNotMatch(appBranch, /Linking\.openURL/);

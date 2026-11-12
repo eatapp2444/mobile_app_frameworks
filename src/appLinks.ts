@@ -343,8 +343,10 @@ function resolveVenuesTarget(tab: NavItem): NavItem | null {
  * Venues / Our Venues, then apply the Fenwick rule: a group with two or more
  * children opens the bottom-nav sheet; otherwise the only listing/page opens
  * directly. The venues role never returns an ordering URL.
- * `open/tab/<name>` is an exact top-level id/label match; if none, it falls
- * through to `open/page` (nested children / hosted pages).
+ * `open/tab/<name>` is an exact top-level id/label match and is the same as
+ * tapping that tab: HtmlView calls `activateTab(name)` so a group opens its
+ * sheet (it is not flattened to the first child's URL). If no tab matches, it
+ * falls through to `open/page` (nested children / hosted pages).
  */
 export function resolveAppLinkTarget(
   url: string,
